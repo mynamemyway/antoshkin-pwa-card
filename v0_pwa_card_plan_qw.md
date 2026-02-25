@@ -80,14 +80,15 @@
   - `created_at`: DateTime (Default: now)
 
 ### 1.3. Настройка Подключения к БД
-* **Цель:** Инициализировать SQLAlchemy с поддержкой SQLite/Postgres.
+* **Цель:** Инициализировать SQLAlchemy с SQLite.
 * **Файл:** `app/database.py`
 * **Логика:**
-  1. Создать `engine` с чтением URL из `.env`
+  1. Создать `engine` с чтением URL из `.env` (SQLite: `sqlite:///./loyalty.db`)
   2. Создать `SessionLocal` (session factory)
   3. Создать `Base` для моделей
   4. Реализовать функцию `get_db()` для dependency injection
   5. Вызвать `Base.metadata.create_all(engine)` при старте
+  6. **Примечание:** Для SQLite добавить `connect_args={"check_same_thread": False}`
 
 ---
 
