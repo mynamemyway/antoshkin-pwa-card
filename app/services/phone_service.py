@@ -1,4 +1,5 @@
 # app/services/phone_service.py
+
 """
 Phone number validation and normalization service.
 
