@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.database import get_db, SessionLocal
+from app.database import get_db
 from app.models import User
 from app.schemas import (
     UserCreate,
@@ -29,76 +29,24 @@ from app.schemas import (
     SMSResponse,
     VerifyResponse,
 )
+from app.services.crud import (
+    get_user_by_phone,
+    create_user,
+)
+from app.services.sms_service import (
+    generate_sms_code,
+    send_sms,
+    verify_sms_code,
+    set_user_sms_code,
+)
 
 # Create router instance
 router = APIRouter()
 
 
 # ============== Helper Functions ==============
-
-def get_user_by_phone(db: Session, phone: str) -> Optional[User]:
-    """
-    Get user by phone number.
-    
-    Args:
-        db: Database session
-        phone: Normalized phone number (+7XXXXXXXXXX)
-    
-    Returns:
-        User object if found, None otherwise
-    """
-    return db.query(User).filter(User.phone == phone).first()
-
-
-def create_user(db: Session, full_name: str, phone: str) -> User:
-    """
-    Create new user in database.
-    
-    Args:
-        db: Database session
-        full_name: Customer's full name
-        phone: Normalized phone number
-    
-    Returns:
-        Created User object
-    """
-    db_user = User(full_name=full_name, phone=phone)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
-
-
-def generate_sms_code() -> str:
-    """
-    Generate 4-digit SMS verification code.
-    
-    Returns:
-        Random 4-digit code as string (e.g., "1234")
-    """
-    import random
-    return str(random.randint(1000, 9999))
-
-
-def send_sms(phone: str, code: str) -> bool:
-    """
-    Send SMS with verification code.
-    
-    Note: This is a stub implementation. Replace with actual SMS API
-    (e.g., SMS.ru) when API key is provided.
-    
-    Args:
-        phone: Normalized phone number
-        code: 4-digit verification code
-    
-    Returns:
-        True if SMS sent successfully, False otherwise
-    """
-    # TODO: Implement actual SMS API integration
-    # For now, just log the code for testing
-    print(f"[SMS] Sending code {code} to {phone}")
-    return True
-
+# Note: These functions are now imported from app.services
+# Local definitions kept for backward compatibility (will be removed later)
 
 # ============== Page Routes (GET) ==============
 
