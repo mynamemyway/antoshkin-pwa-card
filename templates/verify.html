@@ -1,0 +1,301 @@
+<!-- templates/verify.html -->
+
+{% extends "base.html" %}
+
+{% block title %}Подтверждение кода - Антоншкин Карта лояльности{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex flex-col justify-center px-6 py-12 lg:px-8">
+    <!-- Header -->
+    <div class="sm:mx-auto sm:w-full sm:max-w-md text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">
+            Подтверждение кода
+        </h1>
+        <p class="mt-2 text-sm text-gray-600">
+            Введите 4-значный код из SMS
+        </p>
+        <p class="mt-1 text-xs text-gray-500">
+            Номер: <span id="phoneDisplay" class="font-medium"></span>
+        </p>
+    </div>
+    
+    <!-- Verification Form -->
+    <div class="sm:mx-auto sm:w-full sm:max-w-md">
+        <div class="bg-white py-8 px-6 shadow rounded-lg sm:px-10">
+            <form id="verifyForm" class="space-y-6" onsubmit="handleVerify(event)">
+                <!-- Hidden phone field -->
+                <input type="hidden" id="phone" name="phone">
+                
+                <!-- SMS Code Field -->
+                <div>
+                    <label for="code" class="block text-sm font-medium text-gray-700 text-center">
+                        Код из SMS
+                    </label>
+                    <div class="mt-2 flex justify-center">
+                        <input
+                            id="code"
+                            name="code"
+                            type="text"
+                            inputmode="numeric"
+                            pattern="[0-9]*"
+                            maxlength="4"
+                            required
+                            autofocus
+                            placeholder="0000"
+                            class="appearance-none block w-32 px-3 py-3 text-center text-2xl font-mono border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                            oninput="this.value = this.value.replace(/[^0-9]/g, '')"
+                        >
+                    </div>
+                </div>
+                
+                <!-- Timer -->
+                <div class="text-center">
+                    <p class="text-sm text-gray-600">
+                        Код действителен в течение:
+                    </p>
+                    <p id="timer" class="text-2xl font-bold text-gray-900 mt-1">
+                        05:00
+                    </p>
+                </div>
+                
+                <!-- Error Message -->
+                <div id="errorMessage" class="hidden">
+                    <div class="rounded-md bg-red-50 p-4">
+                        <div class="flex">
+                            <div class="ml-3">
+                                <h3 class="text-sm font-medium text-red-800" id="errorText"></h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Submit Button -->
+                <div>
+                    <button
+                        type="submit"
+                        id="submitBtn"
+                        class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors"
+                    >
+                        Подтвердить
+                    </button>
+                </div>
+            </form>
+            
+            <!-- Resend Code -->
+            <div class="mt-6">
+                <div class="relative">
+                    <div class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-gray-300"></div>
+                    </div>
+                    <div class="relative flex justify-center text-sm">
+                        <span class="px-2 bg-white text-gray-500">
+                            Не получили код?
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <button
+                        id="resendBtn"
+                        onclick="handleResend()"
+                        disabled
+                        class="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        Отправить код повторно
+                    </button>
+                    <p id="resendTimer" class="mt-2 text-xs text-center text-gray-500 hidden">
+                        Можно запросить новый код через <span id="resendCountdown">60</span> сек.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Info -->
+    <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <p class="text-xs text-center text-gray-500">
+            Проверьте папку «Спам», если не получили SMS
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let timeLeft = 300; // 5 minutes in seconds
+    let timerInterval;
+    let resendAvailable = false;
+    
+    // Get phone from URL query parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const phone = urlParams.get('phone');
+    
+    if (!phone) {
+        // No phone in URL - redirect to registration
+        window.location.href = '/';
+    } else {
+        // Display phone and store in hidden field
+        document.getElementById('phone').value = phone;
+        document.getElementById('phoneDisplay').textContent = formatPhone(phone);
+    }
+    
+    // Start timer on page load
+    startTimer();
+    
+    // Focus on code input
+    document.getElementById('code').focus();
+    
+    // Start countdown timer
+    function startTimer() {
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            
+            // Update timer display
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            document.getElementById('timer').textContent = 
+                `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            
+            // Enable resend button after 60 seconds
+            if (!resendAvailable && timeLeft <= 240) {
+                resendAvailable = true;
+                document.getElementById('resendBtn').disabled = false;
+                document.getElementById('resendTimer').classList.add('hidden');
+            }
+            
+            // Timer expired
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                document.getElementById('timer').textContent = '00:00';
+                document.getElementById('timer').classList.add('text-red-600');
+            }
+        }, 1000);
+    }
+    
+    // Handle form submission
+    async function handleVerify(event) {
+        event.preventDefault();
+        
+        const submitBtn = document.getElementById('submitBtn');
+        const errorMessage = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+        const code = document.getElementById('code').value;
+        const phone = document.getElementById('phone').value;
+        
+        // Disable button during request
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = 'Проверка...';
+        
+        // Hide previous errors
+        errorMessage.classList.add('hidden');
+        
+        try {
+            // Send verification request
+            const response = await fetch('/api/verify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    phone: phone,
+                    code: code
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.detail || 'Ошибка проверки кода');
+            }
+            
+            // Success - redirect to card page
+            window.location.href = `/card/${encodeURIComponent(phone)}`;
+            
+        } catch (error) {
+            // Show error message
+            errorText.textContent = error.message;
+            errorMessage.classList.remove('hidden');
+            
+            // Re-enable button
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Подтвердить';
+            
+            // Clear code field
+            document.getElementById('code').value = '';
+            document.getElementById('code').focus();
+        }
+    }
+    
+    // Handle resend code
+    async function handleResend() {
+        const resendBtn = document.getElementById('resendBtn');
+        const resendTimer = document.getElementById('resendTimer');
+        const resendCountdown = document.getElementById('resendCountdown');
+        const phone = document.getElementById('phone').value;
+        
+        // Disable button
+        resendBtn.disabled = true;
+        resendBtn.textContent = 'Отправка...';
+        
+        try {
+            // Send resend request
+            const response = await fetch('/api/send-sms', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    phone: phone
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.detail || 'Ошибка отправки кода');
+            }
+            
+            // Reset timer
+            timeLeft = 300;
+            resendAvailable = false;
+            
+            // Show resend cooldown
+            resendTimer.classList.remove('hidden');
+            let cooldown = 60;
+            resendCountdown.textContent = cooldown;
+            
+            const cooldownInterval = setInterval(() => {
+                cooldown--;
+                resendCountdown.textContent = cooldown;
+                
+                if (cooldown <= 0) {
+                    clearInterval(cooldownInterval);
+                    resendBtn.disabled = false;
+                    resendBtn.textContent = 'Отправить код повторно';
+                    resendTimer.classList.add('hidden');
+                }
+            }, 1000);
+            
+            // Clear code field
+            document.getElementById('code').value = '';
+            document.getElementById('code').focus();
+            
+            // Show success message
+            alert('Новый код отправлен!');
+            
+        } catch (error) {
+            alert('Ошибка: ' + error.message);
+            resendBtn.disabled = false;
+        }
+        
+        resendBtn.textContent = 'Отправлено!';
+    }
+    
+    // Format phone for display
+    function formatPhone(phone) {
+        // Remove + and format
+        const digits = phone.replace('+', '');
+        return `+${digits[0]} (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 9)}-${digits.slice(9, 11)}`;
+    }
+</script>
+{% endblock %}
