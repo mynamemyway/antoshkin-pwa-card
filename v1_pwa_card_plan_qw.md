@@ -21,9 +21,23 @@
 
 ---
 
+### Краткий технический чеклист перед запуском:
+- Database: Session.user_id — это ForeignKey с индексацией для быстрого поиска.
+- Cookie: Параметр samesite="lax" критичен для того, чтобы PWA корректно передавало куки при возврате из фонового режима.
+- Middleware: Не забудь добавить его в стек FastAPI в main.py через app.add_middleware.
+
 ### Этап U1: Сервис сессий (Backend)
 
-#### U1.1. Создание сервиса сессий
+#### U1.1. Обновление модели User и создание Session
+* **Цель:** Добавить модель сессии и связь с пользователем.
+* **Файл:** `app/models.py`
+* **Изменения:**
+  - Добавить модель `Session` (id, user_id, token, expires_at, created_at)
+  - Добавить `ForeignKey("users.id")` в таблице sessions
+  - Добавить `relationship("Session", back_populates="user", cascade="all, delete-orphan")` в модель `User`
+  - Таблица `sessions` будет создана автоматически через `Base.metadata.create_all()`
+
+#### U1.2. Создание сервиса сессий
 * **Цель:** Реализовать генерацию, хранение и проверку сессионных токенов.
 * **Файл:** `app/services/session_service.py`
 * **Функции:**
@@ -35,13 +49,6 @@
   - Токен: UUID v4 или `secrets.token_urlsafe(32)`
   - Срок жизни: 30 дней
   - Хранение: отдельная таблица `sessions` (user_id, token, expires_at, created_at)
-
-#### U1.2. Обновление модели User
-* **Цель:** Добавить связь с сессиями.
-* **Файл:** `app/models.py`
-* **Изменения:**
-  - Добавить модель `Session` (id, user_id, token, expires_at, created_at)
-  - Добавить relationship в модель `User`
 
 #### U1.3. Обновление API: вход по телефону
 * **Цель:** Реализовать упрощённый вход для зарегистрированных пользователей.
