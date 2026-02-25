@@ -1,8 +1,23 @@
-## План доработок: Механизм сессий и авто-вход (Update Plan v1.0)
+## План доработок: Механизм сессий и авто-вход (Update Plan v1.1)
 
 ### Проблема
 
 В текущей реализации после перезагрузки страницы или повторного открытия приложения пользователь попадает на страницу регистрации, даже если уже прошёл верификацию. Необходимо реализовать механизм сессий для запоминания пользователя.
+
+---
+
+### Архитектура безопасности
+
+**HttpOnly Cookie (основной метод):**
+- ✅ Хранение `session_token` в cookie
+- ✅ `httponly=True` — недоступно для JavaScript (защита от XSS)
+- ✅ `secure=True` — передача только по HTTPS
+- ✅ `samesite="lax"` — защита от CSRF
+- ✅ Срок жизни: 30 дней
+
+**localStorage (вспомогательный):**
+- ✅ Хранение `phone` — для автозаполнения поля ввода
+- ❌ **НЕ** хранить токены сессии
 
 ---
 
@@ -17,7 +32,7 @@
   - `delete_session(db, token)` → `bool` (выход из системы)
   - `cleanup_expired_sessions(db)` → `int` (удаление просроченных сессий)
 * **Логика:**
-  - Токен: UUID v4 или secrets.token_urlsafe(32)
+  - Токен: UUID v4 или `secrets.token_urlsafe(32)`
   - Срок жизни: 30 дней
   - Хранение: отдельная таблица `sessions` (user_id, token, expires_at, created_at)
 
@@ -33,14 +48,15 @@
 * **Файл:** `app/api/routers.py`
 * **Новые эндпоинты:**
   - `POST /api/login` → вход по телефону (без SMS для verified)
-  - `POST /api/logout` → выход из системы (удаление сессии)
-  - `GET /api/me` → получение текущего пользователя (проверка сессии)
+    - **Response:** Set-Cookie: `session_token=<token>; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`
+  - `POST /api/logout` → выход из системы (удаление сессии + очистка cookie)
+  - `GET /api/me` → получение текущего пользователя (проверка сессии из cookie)
 
 #### U1.4. Middleware для проверки сессии
 * **Цель:** Автоматическая проверка сессии для всех запросов.
 * **Файл:** `app/middleware/auth.py`
 * **Логика:**
-  - Извлекать `session_token` из cookie
+  - Извлекать `session_token` из `request.cookies`
   - Проверять валидность сессии в БД
   - Добавлять `current_user` в `request.state`
   - Пропускать запрос, если сессия невалидна (обработка в роутерах)
@@ -53,37 +69,40 @@
 * **Цель:** Проверка сессии при загрузке, упрощённый вход.
 * **Файл:** `templates/index.html`
 * **Изменения:**
-  - При загрузке: проверка `localStorage.getItem('session_token')`
-  - Если сессия есть → запрос `/api/me` → редирект на `/card/{phone}`
+  - При загрузке: вызов `/api/me` (браузер автоматически прикрепляет cookie)
+  - Если сессия валидна → редирект на `/card/{phone}`
   - Если сессии нет → показать форму
   - После ввода телефона: проверка в БД
     - Новый пользователь → регистрация → SMS
     - Зарегистрированный verified → вход без SMS → редирект на карту
     - Зарегистрированный not verified → SMS → верификация
+  - **localStorage:** только `localStorage.getItem('phone')` для автозаполнения поля
 
 #### U2.2. Обновление страницы верификации (verify.html)
-* **Цель:** Сохранение сессии после успешной верификации.
+* **Цель:** Переход на карту после успешной верификации.
 * **Файл:** `templates/verify.html`
 * **Изменения:**
-  - После успешного `/api/verify` → запрос `/api/login` → получение токена
-  - Сохранение токена в `localStorage.setItem('session_token', token)`
-  - Сохранение телефона в `localStorage.setItem('phone', phone)`
+  - После успешного `/api/verify` → запрос `/api/login`
+  - **Cookie устанавливается автоматически** через `Set-Cookie` заголовок
+  - **НЕ сохранять токен в localStorage**
+  - Сохранение телефона: `localStorage.setItem('phone', phone)` (для автозаполнения)
   - Редирект на `/card/{phone}`
 
 #### U2.3. Обновление страницы карты (card.html)
 * **Цель:** Проверка сессии, возможность выхода.
 * **Файл:** `templates/card.html`
 * **Изменения:**
-  - При загрузке: проверка сессии через `/api/me`
+  - При загрузке: вызов `/api/me` (cookie прикрепляется автоматически)
   - Если сессия невалидна → редирект на `/`
-  - Добавить кнопку "Выйти" → `/api/logout` + очистка localStorage
+  - Добавить кнопку "Выйти" → `/api/logout` (очищает сессию на сервере)
 
 #### U2.4. Базовый шаблон (base.html)
 * **Цель:** Централизованная проверка сессии.
 * **Файл:** `templates/base.html`
 * **Изменения:**
   - Добавить скрипт проверки сессии при загрузке любой страницы
-  - Глобальная функция `checkSession()` для всех страниц
+  - Глобальная функция `checkSession()` → запрос `/api/me`
+  - **Не работает с токенами напрямую** — только через cookie
 
 ---
 
@@ -96,30 +115,31 @@ POST /api/register → создание User (is_verified=False)
 POST /api/send-sms → отправка кода
 GET /verify?phone=... → verify.html (ввод кода)
 POST /api/verify → проверка кода, установка is_verified=True
-POST /api/login → создание сессии, возврат токена
-localStorage.setItem('session_token', token)
+POST /api/login → создание сессии, Set-Cookie: session_token=<token>
+localStorage.setItem('phone', phone)  # только телефон для автозаполнения
 Redirect → /card/{phone}
 ```
 
 #### Сценарий 2: Зарегистрированный и верифицированный (повторный вход)
 ```
 GET / → checkSession() в base.html
-localStorage.getItem('session_token') → есть
-GET /api/me → валидная сессия, is_verified=True
-Redirect → /card/{phone} (без форм, без SMS)
+      → Вызов GET /api/me (браузер сам шлет куку)
+      ← Ответ 200 OK (User найден в БД по куке)
+Redirect → /card/{phone} (без форм и SMS)
 ```
 
 #### Сценарий 3: Зарегистрированный, но НЕ верифицированный
 ```
 GET / → checkSession() в base.html
-localStorage.getItem('session_token') → нет или истёк
+      → Вызов GET /api/me
+      ← Ответ 401 Unauthorized (куки нет или сессия в БД удалена)
 GET / → index.html (форма входа по телефону)
 POST /api/login (только телефон) → проверка в БД
 is_verified=False → POST /api/send-sms
 GET /verify?phone=... → verify.html (ввод кода)
 POST /api/verify → проверка кода, is_verified=True
-POST /api/login → создание сессии
-localStorage.setItem('session_token', token)
+POST /api/login → создание сессии, Set-Cookie: session_token=<token>
+localStorage.setItem('phone', phone)  # только телефон для автозаполнения
 Redirect → /card/{phone}
 ```
 
@@ -127,11 +147,11 @@ Redirect → /card/{phone}
 
 ### Этап U4: Безопасность и оптимизация
 
-#### U4.1. HttpOnly Cookie (опционально)
+#### U4.1. Cookie параметры (обязательно)
 * **Файл:** `app/api/routers.py`
 * **Логика:**
-  - Установка cookie: `response.set_cookie(key="session_token", value=token, httponly=True, secure=True, max_age=2592000)`
-  - Чтение cookie в middleware вместо localStorage
+  - Установка cookie: `response.set_cookie(key="session_token", value=token, httponly=True, secure=True, samesite="lax", max_age=2592000)`
+  - **Обязательно**, а не опционально — это основной метод хранения токена
 
 #### U4.2. Rate Limiting для /api/send-sms
 * **Файл:** `app/middleware/rate_limit.py`
