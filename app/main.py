@@ -7,12 +7,13 @@ Initializes the FastAPI app, configures middleware,
 and includes API routers.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
 from app.database import Base, engine
+from app.api.routers import router
 
 # Initialize database tables
 # Creates all tables defined in models.py if they don't exist
@@ -33,18 +34,20 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 
-@app.get("/")
-async def root(request):
+@app.middleware("http")
+async def add_templates_to_request(request: Request, call_next):
     """
-    Root endpoint - serves the main registration page.
+    Middleware to add templates to request state.
     
-    Args:
-        request: FastAPI request object (required for templates)
-    
-    Returns:
-        Rendered HTML template for the registration page
+    Makes templates available in endpoints via request.state.templates
     """
-    return templates.TemplateResponse("index.html", {"request": request})
+    request.state.templates = templates
+    response = await call_next(request)
+    return response
+
+
+# Include API router
+app.include_router(router)
 
 
 @app.get("/health")
