@@ -12,6 +12,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
+from app.database import Base, engine
+
+# Initialize database tables
+# Creates all tables defined in models.py if they don't exist
+Base.metadata.create_all(bind=engine)
 
 # Initialize FastAPI application
 app = FastAPI(
