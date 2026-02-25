@@ -275,11 +275,11 @@
   - CMD: `uvicorn app.main:app --host 0.0.0.0 --port 8000`
 
 ### 7.2. Docker Compose
-* **Цель:** Оркестрация контейнеров (app + db).
+* **Цель:** Оркестрация контейнеров (app + volumes для БД).
 * **Файл:** `docker-compose.yml`
 * **Логика:**
-  - Сервис `app`: сборка из Dockerfile, порты, volumes
-  - Сервис `db` (опционально): Postgres для продакшена
+  - Сервис `app`: сборка из Dockerfile, порты, volumes для SQLite
+  - **Примечание:** SQLite не требует отдельного контейнера, БД хранится в volume
 
 ### 7.3. Настройка Nginx + SSL
 * **Цель:** HTTPS для PWA (обязательное требование).
