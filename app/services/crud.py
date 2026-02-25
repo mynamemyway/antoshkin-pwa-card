@@ -1,4 +1,5 @@
-# app/crud.py
+# app/services/crud.py
+
 """
 CRUD (Create, Read, Update, Delete) service for User model.
 

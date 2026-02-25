@@ -122,12 +122,18 @@
 
 ### 3.1. CRUD Сервис
 * **Цель:** Реализовать функции для работы с пользователями в БД.
-* **Файл:** `app/crud.py`
+* **Файл:** `app/services/crud.py`
 * **Функции:**
   - `get_user_by_phone(db, phone)` → `User | None`
+  - `get_user_by_id(db, user_id)` → `User | None`
   - `create_user(db, full_name, phone)` → `User`
-  - `update_user(db, user_id, update_data)` → `User`
+  - `update_user(db, user, update_data)` → `User`
   - `get_all_users(db, limit, offset)` → `List[User]` (для админки)
+  - `count_users(db)` → `int`
+  - `delete_user(db, user)` → `bool`
+  - `set_sms_code(db, user, code, expires_at)` → `User`
+  - `clear_sms_code(db, user)` → `User`
+  - `verify_user(db, user)` → `User`
 
 ### 3.2. SMS-Сервис
 * **Цель:** Интеграция с SMS-шлюзом (SMS.ru или аналог).
