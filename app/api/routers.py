@@ -1,4 +1,5 @@
 # app/api/routers.py
+
 """
 API routers for the loyalty card application.
 
