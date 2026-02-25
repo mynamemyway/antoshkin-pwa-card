@@ -330,5 +330,5 @@
 | QR-код на клиенте | Этап 4.4 |
 | HTTPS (обязательно для PWA) | Этап 7.3 |
 | Админка с экспортом CSV | Этап 5 |
-| FastAPI + SQLite/Postgres | Этап 1 |
+| FastAPI + SQLite | Этап 1 |
 | Tailwind CSS | Этап 4 |
