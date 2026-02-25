@@ -1,0 +1,82 @@
+<!-- templates/base.html -->
+ 
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#10B981">
+    <meta name="description" content="Карта лояльности Антоншкин - скидочная программа">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/static/manifest.json">
+    
+    <!-- Apple Touch Icon -->
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    
+    <!-- Title -->
+    <title>{% block title %}Антоншкин - Карта лояльности{% endblock %}</title>
+    
+    <!-- Tailwind CSS (CDN for development) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#10B981',
+                        'primary-dark': '#059669',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Additional Head Content -->
+    {% block extra_head %}{% endblock %}
+    
+    <!-- iOS Safari Fixes -->
+    <style>
+        /* Prevent zoom on input focus */
+        input, select, textarea {
+            font-size: 16px !important;
+        }
+        
+        /* Full height for mobile */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        
+        /* Safe area for iPhone notch */
+        .safe-top {
+            padding-top: env(safe-area-inset-top);
+        }
+        
+        .safe-bottom {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+    <!-- Main Content -->
+    <main class="flex-grow">
+        {% block content %}{% endblock %}
+    </main>
+    
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 py-4 safe-bottom">
+        <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
+            {% block footer %}
+            <p>&copy; 2025 Антоншкин. Все права защищены.</p>
+            {% endblock %}
+        </div>
+    </footer>
+    
+    <!-- JavaScript -->
+    {% block scripts %}{% endblock %}
+</body>
+</html>
