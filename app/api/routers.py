@@ -239,15 +239,15 @@ async def verify_code(
 ):
     """
     Verify SMS code and activate user account.
-    
+
     Args:
         verify_data: Phone number and verification code
         db: Database session
         response: FastAPI response object (for setting cookie)
-    
+
     Returns:
         {"verified": true} if code is valid
-    
+
     Raises:
         HTTPException: If user not found, code invalid, or expired
     """
@@ -255,7 +255,7 @@ async def verify_code(
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     if user.is_verified:
         # Already verified
         return VerifyResponse(verified=True)
@@ -263,22 +263,22 @@ async def verify_code(
     # Check code and expiration
     if not user.sms_code:
         raise HTTPException(status_code=400, detail="No SMS code sent")
-    
+
     if user.sms_code_expires_at < datetime.utcnow():
         raise HTTPException(status_code=400, detail="SMS code expired")
-    
+
     if user.sms_code != verify_data.code:
         raise HTTPException(status_code=400, detail="Invalid SMS code")
-    
+
     # Mark as verified
     user.is_verified = True
     user.sms_code = None
     user.sms_code_expires_at = None
     db.commit()
-    
+
     # Create session and set cookie (only for newly verified users)
     token = create_session(db, user.id)
-    
+
     # Set HttpOnly cookie
     response.set_cookie(
         key=COOKIE_NAME,
@@ -289,7 +289,7 @@ async def verify_code(
         secure=True,
         samesite="lax"
     )
-    
+
     return VerifyResponse(verified=True)
 
 
