@@ -126,24 +126,31 @@
     let timerInterval;
     let resendAvailable = false;
 
-    // Get phone from URL query parameter
-    const urlParams = new URLSearchParams(window.location.search);
-    const phone = urlParams.get('phone');
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check session status using global function
+        // If user already has valid session, redirect to card
+        checkSession('verify');
 
-    if (!phone) {
-        // No phone in URL - redirect to registration
-        window.location.href = '/';
-    } else {
-        // Display phone and store in hidden field
-        document.getElementById('phone').value = phone;
-        document.getElementById('phoneDisplay').textContent = formatPhone(phone);
-    }
+        // Get phone from URL query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const phone = urlParams.get('phone');
 
-    // Start timer on page load
-    startTimer();
+        if (!phone) {
+            // No phone in URL - redirect to registration
+            window.location.href = '/';
+        } else {
+            // Display phone and store in hidden field
+            document.getElementById('phone').value = phone;
+            document.getElementById('phoneDisplay').textContent = formatPhone(phone);
+        }
 
-    // Focus on code input
-    document.getElementById('code').focus();
+        // Start timer on page load
+        startTimer();
+
+        // Focus on code input
+        document.getElementById('code').focus();
+    });
 
     // Start countdown timer
     function startTimer() {
