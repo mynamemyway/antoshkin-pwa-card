@@ -310,4 +310,4 @@ GET /admin/export   # Экспорт в CSV
 ## 📬 Контакты
 
 - **Заказчик:** Цветочный комбинат [rassada1.ru](https://rassada1.ru/)
-- **Разработчик:** Alex (Python Backend Developer)
+- **Разработчик:** [mynamemyway](https://github.com/mynamemyway)
