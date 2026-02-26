@@ -6,6 +6,7 @@ API routers for the loyalty card application.
 Defines all HTTP endpoints for:
 - User registration and verification
 - SMS code sending and validation
+- Session management (login, logout, me)
 - Card display
 - Admin panel and data export
 """
@@ -19,7 +20,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
+from app.models import User, Session
 from app.schemas import (
     UserCreate,
     UserOut,
@@ -39,14 +40,19 @@ from app.services.sms_service import (
     verify_sms_code,
     set_user_sms_code,
 )
+from app.services.session_service import (
+    create_session,
+    get_session_by_token,
+    delete_session,
+)
 
 # Create router instance
 router = APIRouter()
 
-
-# ============== Helper Functions ==============
-# Note: These functions are now imported from app.services
-# Local definitions kept for backward compatibility (will be removed later)
+# Cookie configuration
+COOKIE_NAME = "session_token"
+COOKIE_MAX_AGE = 2592000  # 30 days in seconds
+COOKIE_PATH = "/"
 
 # ============== Page Routes (GET) ==============
 
@@ -226,13 +232,18 @@ async def send_sms_code(sms_data: SMSRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/api/verify", response_model=VerifyResponse)
-async def verify_code(verify_data: UserVerify, db: Session = Depends(get_db)):
+async def verify_code(
+    verify_data: UserVerify,
+    db: Session = Depends(get_db),
+    response: Response = None
+):
     """
     Verify SMS code and activate user account.
     
     Args:
         verify_data: Phone number and verification code
         db: Database session
+        response: FastAPI response object (for setting cookie)
     
     Returns:
         {"verified": true} if code is valid
@@ -265,4 +276,183 @@ async def verify_code(verify_data: UserVerify, db: Session = Depends(get_db)):
     user.sms_code_expires_at = None
     db.commit()
     
+    # Create session and set cookie (only for newly verified users)
+    token = create_session(db, user.id)
+    
+    # Set HttpOnly cookie
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        max_age=COOKIE_MAX_AGE,
+        path=COOKIE_PATH,
+        httponly=True,
+        secure=True,
+        samesite="lax"
+    )
+    
     return VerifyResponse(verified=True)
+
+
+# ============== Session API Routes ==============
+
+@router.post("/api/login")
+async def login(
+    sms_data: SMSRequest,
+    db: Session = Depends(get_db),
+    response: Response = None
+):
+    """
+    Login by phone number.
+    
+    Logic:
+    - Check if phone exists in database
+    - If found (any status): send SMS code, return 200 OK (redirect to verify)
+    - If not found: return 404 Not Found (frontend should trigger registration)
+    
+    Args:
+        sms_data: Phone number for login
+        db: Database session
+        response: FastAPI response object
+    
+    Returns:
+        {"sent": true} if SMS was sent successfully
+    
+    Raises:
+        HTTPException: 404 if user not found (trigger registration)
+    
+    Usage (Frontend):
+        # Try to login
+        const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({phone: '+79991234567'})
+        });
+        
+        if (response.status === 404) {
+            // User not found - start registration flow
+        } else if (response.ok) {
+            // SMS sent - redirect to verification page
+        }
+    """
+    # Find user by phone
+    user = get_user_by_phone(db, sms_data.phone)
+    
+    if not user:
+        # User not found - frontend should trigger registration
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # User exists - send SMS code (for both verified and not verified)
+    # This handles Scenario 3 (verified, no cookie) and Scenario 4 (not verified)
+    
+    # Generate and save code
+    code = generate_sms_code()
+    user.sms_code = code
+    user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+    db.commit()
+    
+    # Send SMS
+    sms_sent = send_sms(user.phone, code)
+    
+    if not sms_sent:
+        raise HTTPException(status_code=500, detail="Failed to send SMS")
+    
+    return SMSResponse(sent=True)
+
+
+@router.post("/api/logout")
+async def logout(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Logout user (delete session).
+    
+    Logic:
+    - Get session token from cookie
+    - Delete session from database
+    - Clear cookie in browser
+    
+    Args:
+        request: FastAPI request object (for cookie access)
+        db: Database session
+    
+    Returns:
+        {"success": true} if logged out successfully
+    """
+    # Get token from cookie
+    token = request.cookies.get(COOKIE_NAME)
+    
+    if token:
+        # Delete session from database
+        delete_session(db, token)
+    
+    # Create response with cookie cleared
+    response = Response(content='{"success": true}')
+    response.delete_cookie(
+        key=COOKIE_NAME,
+        path=COOKIE_PATH,
+        httponly=True,
+        secure=True,
+        samesite="lax"
+    )
+    
+    return response
+
+
+@router.get("/api/me", response_model=UserOut)
+async def get_current_user(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Get current authenticated user.
+    
+    Logic:
+    - Get session token from cookie
+    - Find session in database
+    - Check if session is valid (not expired)
+    - Return user data if valid
+    
+    Args:
+        request: FastAPI request object (for cookie access)
+        db: Database session
+    
+    Returns:
+        User data if authenticated
+    
+    Raises:
+        HTTPException: 401 Unauthorized if not authenticated
+    
+    Usage (Frontend):
+        # Check if user is authenticated
+        const response = await fetch('/api/me', {
+            credentials: 'include'  // Send cookies automatically
+        });
+        
+        if (response.ok) {
+            const user = await response.json();
+            // User is authenticated
+        } else if (response.status === 401) {
+            // Not authenticated - show login form
+        }
+    """
+    # Get token from cookie
+    token = request.cookies.get(COOKIE_NAME)
+    
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    # Find session by token
+    session = get_session_by_token(db, token)
+    
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    
+    # Check if session is valid (not expired)
+    if not session.is_valid():
+        # Delete expired session
+        delete_session(db, token)
+        raise HTTPException(status_code=401, detail="Session expired")
+    
+    # Return user data
+    return session.user
