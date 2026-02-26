@@ -110,6 +110,8 @@
   - Пропускать запрос, если сессия невалидна (обработка в роутерах)
 * **Файл:** `app/main.py`
   - Добавить middleware в `main.py`
+* **Файл:** `app/main.py`
+  - Обновить GET /api/me в routers.py для использования request.state.current_user (вместо ручного чтения cookie)
 
 ---
 
