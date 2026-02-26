@@ -78,5 +78,58 @@
     
     <!-- JavaScript -->
     {% block scripts %}{% endblock %}
+
+    <!-- Global Session Check Function -->
+    <script>
+        /**
+         * Global session check function for all pages.
+         * Calls /api/me to validate session (browser auto-attaches cookie).
+         * 
+         * @param {string} pageType - Type of current page: 'index', 'card', 'verify', 'admin'
+         * 
+         * Logic:
+         * - If session valid (200 OK):
+         *   - pageType === 'index' → redirect to /card/{phone}
+         *   - pageType === 'card' or 'admin' → continue loading
+         * - If session invalid (401):
+         *   - pageType === 'card' or 'admin' → redirect to /
+         *   - pageType === 'index' or 'verify' → continue loading
+         * 
+         * Usage in child templates:
+         *   document.addEventListener('DOMContentLoaded', function() {
+         *       checkSession('index');  // or 'card', 'verify', 'admin'
+         *   });
+         */
+        async function checkSession(pageType) {
+            try {
+                const response = await fetch('/api/me', {
+                    credentials: 'include'  // Browser auto-attaches HttpOnly cookie
+                });
+
+                if (response.ok) {
+                    // Session is valid
+                    const user = await response.json();
+
+                    if (pageType === 'index') {
+                        // On home page with valid session → redirect to card
+                        window.location.href = `/card/${encodeURIComponent(user.phone)}`;
+                    }
+                    // For 'card', 'verify', 'admin' → continue loading page
+
+                } else {
+                    // Session is invalid (401 Unauthorized)
+                    if (pageType === 'card' || pageType === 'admin') {
+                        // On protected page without valid session → redirect to home
+                        window.location.href = '/';
+                    }
+                    // For 'index' or 'verify' → continue loading (show form)
+                }
+            } catch (error) {
+                // Network error or server unavailable
+                console.error('Session check failed:', error);
+                // Continue loading page (don't block user experience)
+            }
+        }
+    </script>
 </body>
 </html>
