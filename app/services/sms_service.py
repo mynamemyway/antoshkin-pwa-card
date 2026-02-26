@@ -8,8 +8,12 @@ Integrates with SMS gateway API (e.g., SMS.ru).
 
 Functions:
 - generate_sms_code: Create 4-digit verification code
-- send_sms: Send SMS via gateway API
+- send_sms: Send SMS via gateway API (stub for testing)
 - verify_sms_code: Validate code and mark user as verified
+
+Testing:
+    For local testing, the code is always "0000" (TEST_MODE=True).
+    Set TEST_MODE=False for production with real SMS codes.
 """
 
 import random
@@ -21,21 +25,29 @@ from app.models import User
 from app.config import settings
 
 
+# Test mode flag: set to True for testing without real SMS
+TEST_MODE = True
+TEST_CODE = "0000"  # Universal code for testing
+
+
 def generate_sms_code() -> str:
     """
     Generate 4-digit SMS verification code.
     
     Returns:
-        Random 4-digit code as string (e.g., "1234", "0007")
+        In TEST_MODE: always returns "0000"
+        In production: random 4-digit code (0000-9999)
     
     Note:
         Code is zero-padded to ensure exactly 4 digits.
-        Range: 0000-9999
     
     Usage:
         code = generate_sms_code()
-        print(f"Your code: {code}")  # "Your code: 3847"
+        print(f"Your code: {code}")  # "Your code: 0000" (test mode)
     """
+    if TEST_MODE:
+        return TEST_CODE
+    
     return f"{random.randint(0, 9999):04d}"
 
 
