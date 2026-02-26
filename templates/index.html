@@ -96,31 +96,9 @@
             document.getElementById('phone').value = savedPhone;
         }
 
-        // Check session status
-        checkSessionAndRedirect();
+        // Check session status using global function
+        checkSession('index');
     });
-
-    // Check if user is already authenticated
-    async function checkSessionAndRedirect() {
-        try {
-            const response = await fetch('/api/me', {
-                credentials: 'include'  // Send cookies automatically
-            });
-
-            if (response.ok) {
-                // User is authenticated - redirect to card
-                const user = await response.json();
-                window.location.href = `/card/${encodeURIComponent(user.phone)}`;
-            } else {
-                // Not authenticated - show form
-                showForm();
-            }
-        } catch (error) {
-            // Network error - show form anyway
-            console.error('Session check failed:', error);
-            showForm();
-        }
-    }
 
     // Show form after session check
     function showForm() {
