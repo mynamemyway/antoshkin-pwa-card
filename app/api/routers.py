@@ -266,14 +266,24 @@ async def verify_code(
         HTTPException: If user not found, code invalid, or expired
     """
     user = get_user_by_phone(db, verify_data.phone)
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     if user.is_verified:
-        # Already verified
+        # Already verified - create session and set cookie
+        token = create_session(db, user.id)
+        response.set_cookie(
+            key=COOKIE_NAME,
+            value=token,
+            max_age=COOKIE_MAX_AGE,
+            path=COOKIE_PATH,
+            httponly=True,
+            secure=True,
+            samesite="lax"
+        )
         return VerifyResponse(verified=True)
-    
+
     # Check code and expiration
     if not user.sms_code:
         raise HTTPException(status_code=400, detail="No SMS code sent")
@@ -305,7 +315,6 @@ async def verify_code(
     )
 
     return VerifyResponse(verified=True)
-
 
 # ============== Session API Routes ==============
 
