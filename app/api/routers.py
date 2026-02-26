@@ -408,10 +408,8 @@ async def get_current_user(
     Get current authenticated user.
     
     Logic:
-    - Get session token from cookie
-    - Find session in database
-    - Check if session is valid (not expired)
-    - Return user data if valid
+    - Middleware already validated session and set request.state.current_user
+    - Just return the user if authenticated
     
     Args:
         request: FastAPI request object (for cookie access)
@@ -436,23 +434,11 @@ async def get_current_user(
             // Not authenticated - show login form
         }
     """
-    # Get token from cookie
-    token = request.cookies.get(COOKIE_NAME)
+    # Get user from request.state (injected by middleware)
+    user = request.state.current_user
     
-    if not token:
+    if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
-    # Find session by token
-    session = get_session_by_token(db, token)
-    
-    if not session:
-        raise HTTPException(status_code=401, detail="Invalid session")
-    
-    # Check if session is valid (not expired)
-    if not session.is_valid():
-        # Delete expired session
-        delete_session(db, token)
-        raise HTTPException(status_code=401, detail="Session expired")
-    
     # Return user data
-    return session.user
+    return user
