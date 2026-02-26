@@ -12,31 +12,22 @@
             Карта лояльности
         </h1>
         <p class="mt-2 text-sm text-gray-600">
-            Зарегистрируйтесь и получайте скидки
+            <span id="headerText">Зарегистрируйтесь и получайте скидки</span>
         </p>
     </div>
-    
-    <!-- Registration Form -->
-    <div class="sm:mx-auto sm:w-full sm:max-w-md">
+
+    <!-- Loading State -->
+    <div id="loadingState" class="sm:mx-auto sm:w-full sm:max-w-md">
+        <div class="bg-white py-8 px-6 shadow rounded-lg sm:px-10 text-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p class="mt-4 text-gray-600">Проверка сессии...</p>
+        </div>
+    </div>
+
+    <!-- Registration/Login Form -->
+    <div id="formState" class="sm:mx-auto sm:w-full sm:max-w-md hidden">
         <div class="bg-white py-8 px-6 shadow rounded-lg sm:px-10">
-            <form id="registrationForm" class="space-y-6" onsubmit="handleRegister(event)">
-                <!-- Full Name Field -->
-                <div>
-                    <label for="full_name" class="block text-sm font-medium text-gray-700">
-                        Имя
-                    </label>
-                    <div class="mt-1">
-                        <input
-                            id="full_name"
-                            name="full_name"
-                            type="text"
-                            required
-                            placeholder="Иван Иванов"
-                            class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
-                        >
-                    </div>
-                </div>
-                
+            <form id="phoneForm" class="space-y-6" onsubmit="handlePhoneSubmit(event)">
                 <!-- Phone Field -->
                 <div>
                     <label for="phone" class="block text-sm font-medium text-gray-700">
@@ -57,7 +48,7 @@
                         Введите номер в формате +7XXXXXXXXXX
                     </p>
                 </div>
-                
+
                 <!-- Error Message -->
                 <div id="errorMessage" class="hidden">
                     <div class="rounded-md bg-red-50 p-4">
@@ -68,7 +59,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Submit Button -->
                 <div>
                     <button
@@ -76,17 +67,17 @@
                         id="submitBtn"
                         class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors"
                     >
-                        Получить карту
+                        Продолжить
                     </button>
                 </div>
             </form>
         </div>
     </div>
-    
+
     <!-- Info -->
     <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <p class="text-xs text-center text-gray-500">
-            После регистрации вам придёт SMS с кодом подтверждения
+            После ввода номера вам придёт SMS с кодом подтверждения
         </p>
     </div>
 </div>
@@ -94,25 +85,120 @@
 
 {% block scripts %}
 <script>
-    // Handle form submission
-    async function handleRegister(event) {
+    // Page state
+    let isCheckingSession = true;
+
+    // On page load: check session and auto-fill phone
+    document.addEventListener('DOMContentLoaded', function() {
+        // Auto-fill phone from localStorage if available
+        const savedPhone = localStorage.getItem('phone');
+        if (savedPhone) {
+            document.getElementById('phone').value = savedPhone;
+        }
+
+        // Check session status
+        checkSessionAndRedirect();
+    });
+
+    // Check if user is already authenticated
+    async function checkSessionAndRedirect() {
+        try {
+            const response = await fetch('/api/me', {
+                credentials: 'include'  // Send cookies automatically
+            });
+
+            if (response.ok) {
+                // User is authenticated - redirect to card
+                const user = await response.json();
+                window.location.href = `/card/${encodeURIComponent(user.phone)}`;
+            } else {
+                // Not authenticated - show form
+                showForm();
+            }
+        } catch (error) {
+            // Network error - show form anyway
+            console.error('Session check failed:', error);
+            showForm();
+        }
+    }
+
+    // Show form after session check
+    function showForm() {
+        isCheckingSession = false;
+        document.getElementById('loadingState').classList.add('hidden');
+        document.getElementById('formState').classList.remove('hidden');
+
+        // Focus on phone field
+        document.getElementById('phone').focus();
+    }
+
+    // Handle phone form submission
+    async function handlePhoneSubmit(event) {
         event.preventDefault();
-        
+
         const submitBtn = document.getElementById('submitBtn');
         const errorMessage = document.getElementById('errorMessage');
         const errorText = document.getElementById('errorText');
-        
+        const phone = document.getElementById('phone').value.trim();
+
         // Disable button during request
         submitBtn.disabled = true;
-        submitBtn.innerHTML = 'Отправка...';
-        
-        // Get form values
-        const fullName = document.getElementById('full_name').value.trim();
-        const phone = document.getElementById('phone').value.trim();
-        
+        submitBtn.innerHTML = 'Проверка...';
+
         // Hide previous errors
         errorMessage.classList.add('hidden');
-        
+
+        try {
+            // Try to login (send SMS for existing user)
+            const loginResponse = await fetch('/api/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ phone: phone })
+            });
+
+            if (loginResponse.status === 404) {
+                // User not found - start registration flow
+                await registerUser(phone);
+            } else if (loginResponse.ok) {
+                // User exists - SMS sent, redirect to verification
+                // Save phone to localStorage for auto-fill
+                localStorage.setItem('phone', phone);
+                window.location.href = `/verify?phone=${encodeURIComponent(phone)}`;
+            } else {
+                // Other error
+                const errorData = await loginResponse.json();
+                throw new Error(errorData.detail || 'Ошибка входа');
+            }
+
+        } catch (error) {
+            // Show error message
+            errorText.textContent = error.message;
+            errorMessage.classList.remove('hidden');
+
+            // Re-enable button
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Продолжить';
+        }
+    }
+
+    // Register new user
+    async function registerUser(phone) {
+        const submitBtn = document.getElementById('submitBtn');
+        const errorMessage = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+
+        // Show registration prompt
+        const fullName = prompt('Введите ваше имя:');
+
+        if (!fullName || fullName.trim() === '') {
+            // User cancelled registration
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Продолжить';
+            return;
+        }
+
         try {
             // Send registration request
             const response = await fetch('/api/register', {
@@ -121,35 +207,52 @@
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    full_name: fullName,
+                    full_name: fullName.trim(),
                     phone: phone
                 })
             });
-            
+
             const data = await response.json();
-            
+
             if (!response.ok) {
                 throw new Error(data.detail || 'Ошибка регистрации');
             }
-            
-            // Success - redirect to SMS verification page
-            window.location.href = `/verify?phone=${encodeURIComponent(data.phone)}`;
-            
+
+            // Registration successful - send SMS
+            const smsResponse = await fetch('/api/send-sms', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ phone: phone })
+            });
+
+            if (!smsResponse.ok) {
+                const smsError = await smsResponse.json();
+                throw new Error(smsError.detail || 'Ошибка отправки SMS');
+            }
+
+            // Save phone to localStorage for auto-fill
+            localStorage.setItem('phone', phone);
+
+            // Redirect to verification
+            window.location.href = `/verify?phone=${encodeURIComponent(phone)}`;
+
         } catch (error) {
             // Show error message
             errorText.textContent = error.message;
             errorMessage.classList.remove('hidden');
-            
+
             // Re-enable button
             submitBtn.disabled = false;
-            submitBtn.innerHTML = 'Получить карту';
+            submitBtn.innerHTML = 'Продолжить';
         }
     }
-    
-    // Phone number formatting (optional enhancement)
+
+    // Phone number formatting
     document.getElementById('phone').addEventListener('input', function(e) {
         let value = e.target.value.replace(/\D/g, '');
-        
+
         if (value.startsWith('7')) {
             value = '+' + value;
         } else if (value.startsWith('8')) {
@@ -157,7 +260,7 @@
         } else if (value.length > 0 && !value.startsWith('+')) {
             value = '+7' + value;
         }
-        
+
         e.target.value = value;
     });
 </script>
