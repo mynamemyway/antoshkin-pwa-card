@@ -24,10 +24,27 @@
         </div>
     </div>
 
-    <!-- Registration/Login Form -->
+    <!-- Registration Form -->
     <div id="formState" class="sm:mx-auto sm:w-full sm:max-w-md hidden">
         <div class="bg-white py-8 px-6 shadow rounded-lg sm:px-10">
-            <form id="phoneForm" class="space-y-6" onsubmit="handlePhoneSubmit(event)">
+            <form id="registrationForm" class="space-y-6" onsubmit="handleRegistrationSubmit(event)">
+                <!-- Full Name Field -->
+                <div>
+                    <label for="full_name" class="block text-sm font-medium text-gray-700">
+                        Имя
+                    </label>
+                    <div class="mt-1">
+                        <input
+                            id="full_name"
+                            name="full_name"
+                            type="text"
+                            required
+                            placeholder="Иван Иванов"
+                            class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                        >
+                    </div>
+                </div>
+
                 <!-- Phone Field -->
                 <div>
                     <label for="phone" class="block text-sm font-medium text-gray-700">
@@ -45,7 +62,7 @@
                         >
                     </div>
                     <p class="mt-1 text-xs text-gray-500">
-                        Введите номер в формате 7XXXXXXXXXX
+                        Введите номер в формате +7XXXXXXXXXX
                     </p>
                 </div>
 
@@ -110,76 +127,26 @@
         document.getElementById('loadingState').classList.add('hidden');
         document.getElementById('formState').classList.remove('hidden');
 
-        // Focus on phone field
-        document.getElementById('phone').focus();
+        // Focus on name field
+        document.getElementById('full_name').focus();
     }
 
-    // Handle phone form submission
-    async function handlePhoneSubmit(event) {
+    // Handle registration form submission
+    async function handleRegistrationSubmit(event) {
         event.preventDefault();
 
         const submitBtn = document.getElementById('submitBtn');
         const errorMessage = document.getElementById('errorMessage');
         const errorText = document.getElementById('errorText');
+        const fullName = document.getElementById('full_name').value.trim();
         const phone = document.getElementById('phone').value.trim();
 
         // Disable button during request
         submitBtn.disabled = true;
-        submitBtn.innerHTML = 'Проверка...';
+        submitBtn.innerHTML = 'Отправка...';
 
         // Hide previous errors
         errorMessage.classList.add('hidden');
-
-        try {
-            // Try to login (send SMS for existing user)
-            const loginResponse = await fetch('/api/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ phone: phone })
-            });
-
-            if (loginResponse.status === 404) {
-                // User not found - start registration flow
-                await registerUser(phone);
-            } else if (loginResponse.ok) {
-                // User exists - SMS sent, redirect to verification
-                // Save phone to localStorage for auto-fill
-                localStorage.setItem('phone', phone);
-                window.location.href = `/verify?phone=${encodeURIComponent(phone)}`;
-            } else {
-                // Other error
-                const errorData = await loginResponse.json();
-                throw new Error(errorData.detail || 'Ошибка входа');
-            }
-
-        } catch (error) {
-            // Show error message
-            errorText.textContent = error.message;
-            errorMessage.classList.remove('hidden');
-
-            // Re-enable button
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = 'Продолжить';
-        }
-    }
-
-    // Register new user
-    async function registerUser(phone) {
-        const submitBtn = document.getElementById('submitBtn');
-        const errorMessage = document.getElementById('errorMessage');
-        const errorText = document.getElementById('errorText');
-
-        // Show registration prompt
-        const fullName = prompt('Введите ваше имя:');
-
-        if (!fullName || fullName.trim() === '') {
-            // User cancelled registration
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = 'Продолжить';
-            return;
-        }
 
         try {
             // Send registration request
@@ -189,7 +156,7 @@
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    full_name: fullName.trim(),
+                    full_name: fullName,
                     phone: phone
                 })
             });
