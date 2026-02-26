@@ -15,9 +15,17 @@
             Покажите QR-код кассиру для получения скидки
         </p>
     </div>
-    
-    <!-- Card Container -->
-    <div class="sm:mx-auto sm:w-full sm:max-w-md">
+
+    <!-- Loading State -->
+    <div id="loadingState" class="sm:mx-auto sm:w-full sm:max-w-md">
+        <div class="bg-white py-8 px-6 shadow rounded-lg sm:px-10 text-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p class="mt-4 text-gray-600">Загрузка карты...</p>
+        </div>
+    </div>
+
+    <!-- Card Container (hidden until session verified) -->
+    <div id="cardContainer" class="sm:mx-auto sm:w-full sm:max-w-md hidden">
         <div class="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl shadow-2xl overflow-hidden">
             <!-- Card Header -->
             <div class="bg-emerald-800 bg-opacity-50 px-6 py-4">
@@ -30,7 +38,7 @@
                     </span>
                 </div>
             </div>
-            
+
             <!-- Card Body -->
             <div class="px-6 py-8">
                 <!-- User Info -->
@@ -45,12 +53,12 @@
                         {{ user.phone }}
                     </p>
                 </div>
-                
+
                 <!-- QR Code Container -->
                 <div class="flex justify-center mb-6">
                     <div id="qrcode" class="bg-white p-4 rounded-lg shadow-lg"></div>
                 </div>
-                
+
                 <!-- Card ID -->
                 <div class="text-center">
                     <p class="text-emerald-200 text-xs">
@@ -61,7 +69,7 @@
                     </p>
                 </div>
             </div>
-            
+
             <!-- Card Footer -->
             <div class="bg-emerald-800 bg-opacity-30 px-6 py-4">
                 <p class="text-emerald-200 text-xs text-center">
@@ -69,7 +77,7 @@
                 </p>
             </div>
         </div>
-        
+
         <!-- Instructions -->
         <div class="mt-8 bg-white rounded-lg shadow p-6">
             <h3 class="text-gray-900 font-semibold mb-4">
@@ -96,7 +104,7 @@
                 </li>
             </ol>
         </div>
-        
+
         <!-- Add to Home Screen Hint (iOS) -->
         <div id="iosHint" class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 hidden">
             <div class="flex">
@@ -115,10 +123,21 @@
                 </div>
             </div>
         </div>
+
+        <!-- Logout Button -->
+        <div class="mt-6">
+            <button
+                onclick="handleLogout()"
+                id="logoutBtn"
+                class="w-full flex justify-center py-3 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors"
+            >
+                Выйти
+            </button>
+        </div>
     </div>
-    
-    <!-- Logout / Back Button -->
-    <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+
+    <!-- Back Button (shown if session invalid) -->
+    <div id="backContainer" class="mt-8 sm:mx-auto sm:w-full sm:max-w-md hidden">
         <a
             href="/"
             class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-primary bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors"
@@ -134,9 +153,9 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
 <!-- User Data (passed from server) -->
-<div id="userData" 
-     data-user-id="{{ user.id }}" 
-     data-user-name="{{ user.full_name }}" 
+<div id="userData"
+     data-user-id="{{ user.id }}"
+     data-user-name="{{ user.full_name }}"
      data-user-phone="{{ user.phone }}"
      class="hidden">
 </div>
@@ -149,17 +168,17 @@
         full_name: userDataElement.dataset.userName,
         phone: userDataElement.dataset.userPhone
     };
-    
+
     // Generate QR Code
     function generateQRCode() {
         const qrContainer = document.getElementById('qrcode');
-        
+
         // QR data: JSON with user info
         const qrData = JSON.stringify({
             user_id: user.id,
             phone: user.phone
         });
-        
+
         // Create QR code
         new QRCode(qrContainer, {
             text: qrData,
@@ -170,13 +189,13 @@
             correctLevel: QRCode.CorrectLevel.M
         });
     }
-    
+
     // Format phone for display
     function formatPhone(phone) {
         const digits = phone.replace('+', '');
         return `+${digits[0]} (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 9)}-${digits.slice(9, 11)}`;
     }
-    
+
     // Check if iOS device
     function isIOS() {
         return [
@@ -189,28 +208,98 @@
         ].includes(navigator.platform)
         || (navigator.userAgent.includes("Mac") && "ontouchend" in document);
     }
-    
+
     // Check if app is installed (running in standalone mode)
     function isStandalone() {
-        return window.matchMedia('(display-mode: standalone)').matches 
+        return window.matchMedia('(display-mode: standalone)').matches
             || window.navigator.standalone === true;
     }
-    
-    // Initialize page
-    document.addEventListener('DOMContentLoaded', function() {
+
+    // Handle logout
+    async function handleLogout() {
+        const logoutBtn = document.getElementById('logoutBtn');
+        
+        // Disable button during request
+        logoutBtn.disabled = true;
+        logoutBtn.textContent = 'Выход...';
+
+        try {
+            // Call logout endpoint (clears session in database and cookie)
+            const response = await fetch('/api/logout', {
+                method: 'POST',
+                credentials: 'include'  // Send cookies
+            });
+
+            if (response.ok) {
+                // Clear localStorage
+                localStorage.removeItem('phone');
+                
+                // Redirect to home page
+                window.location.href = '/';
+            } else {
+                throw new Error('Ошибка выхода');
+            }
+        } catch (error) {
+            console.error('Logout failed:', error);
+            // Still redirect to home page even if logout fails
+            localStorage.removeItem('phone');
+            window.location.href = '/';
+        }
+    }
+
+    // Check session validity on page load
+    async function checkSession() {
+        try {
+            const response = await fetch('/api/me', {
+                credentials: 'include'  // Send cookies automatically
+            });
+
+            if (!response.ok) {
+                // Session invalid or expired - redirect to home
+                throw new Error('Session invalid');
+            }
+
+            // Session is valid - show card
+            showCard();
+
+        } catch (error) {
+            console.error('Session check failed:', error);
+            // Show error state
+            showSessionError();
+        }
+    }
+
+    // Show card container
+    function showCard() {
+        document.getElementById('loadingState').classList.add('hidden');
+        document.getElementById('cardContainer').classList.remove('hidden');
+
         // Generate QR code
         generateQRCode();
-        
+
         // Format phone display
         const phoneElement = document.getElementById('userPhone');
         if (phoneElement) {
             phoneElement.textContent = formatPhone(user.phone);
         }
-        
+
         // Show iOS hint if not installed
         if (isIOS() && !isStandalone()) {
             document.getElementById('iosHint').classList.remove('hidden');
         }
+    }
+
+    // Show session error state
+    function showSessionError() {
+        document.getElementById('loadingState').classList.add('hidden');
+        document.getElementById('cardContainer').classList.add('hidden');
+        document.getElementById('backContainer').classList.remove('hidden');
+    }
+
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check session validity
+        checkSession();
     });
 </script>
 {% endblock %}
