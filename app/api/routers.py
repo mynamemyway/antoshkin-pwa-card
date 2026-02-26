@@ -60,14 +60,28 @@ COOKIE_PATH = "/"
 async def root(request: Request):
     """
     Root endpoint - serves the main registration page.
-    
+
     Args:
         request: FastAPI request object (required for templates)
-    
+
     Returns:
         Rendered HTML template for the registration page
     """
     return request.state.templates.TemplateResponse("index.html", {"request": request})
+
+
+@router.get("/verify", response_class=HTMLResponse)
+async def verify_page(request: Request):
+    """
+    Verification page - SMS code input.
+
+    Args:
+        request: FastAPI request object (required for templates)
+
+    Returns:
+        Rendered HTML template for the verification page
+    """
+    return request.state.templates.TemplateResponse("verify.html", {"request": request})
 
 
 @router.get("/admin", response_class=HTMLResponse)
