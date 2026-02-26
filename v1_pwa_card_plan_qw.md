@@ -158,7 +158,7 @@
   - **U2.4.1:** `templates/base.html` — создание глобальной функции `checkSession(pageType)`
   - **U2.4.2:** `templates/index.html` — удалить локальную `checkSessionAndRedirect()`, вызвать `checkSession('index')`
   - **U2.4.3:** `templates/card.html` — удалить локальную `checkSession()`, вызвать `checkSession('card')`
-  - **U2.4.4:** `templates/verify.html` — опционально (можно пропустить, верификация — временная страница)
+  - **U2.4.4:** `templates/verify.html` — вызвать `checkSession('verify')`. Если пользователь случайно забрел на страницу верификации, уже имея активную сессию — мы его «пропустим» или он сможет завершить процесс.
 
 * **Таблица редиректов:**
 
