@@ -218,7 +218,7 @@
     // Handle logout
     async function handleLogout() {
         const logoutBtn = document.getElementById('logoutBtn');
-        
+
         // Disable button during request
         logoutBtn.disabled = true;
         logoutBtn.textContent = 'Выход...';
@@ -233,7 +233,7 @@
             if (response.ok) {
                 // Clear localStorage
                 localStorage.removeItem('phone');
-                
+
                 // Redirect to home page
                 window.location.href = '/';
             } else {
@@ -244,28 +244,6 @@
             // Still redirect to home page even if logout fails
             localStorage.removeItem('phone');
             window.location.href = '/';
-        }
-    }
-
-    // Check session validity on page load
-    async function checkSession() {
-        try {
-            const response = await fetch('/api/me', {
-                credentials: 'include'  // Send cookies automatically
-            });
-
-            if (!response.ok) {
-                // Session invalid or expired - redirect to home
-                throw new Error('Session invalid');
-            }
-
-            // Session is valid - show card
-            showCard();
-
-        } catch (error) {
-            console.error('Session check failed:', error);
-            // Show error state
-            showSessionError();
         }
     }
 
@@ -298,8 +276,13 @@
 
     // Initialize page
     document.addEventListener('DOMContentLoaded', function() {
-        // Check session validity
-        checkSession();
+        // Check session validity using global function
+        // For 'card' page: global function redirects to / if session invalid
+        // If session is valid, we continue loading the card
+        checkSession('card');
+        
+        // Show card content (if not redirected by checkSession)
+        showCard();
     });
 </script>
 {% endblock %}
