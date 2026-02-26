@@ -90,6 +90,7 @@
          * Logic:
          * - If session valid (200 OK):
          *   - pageType === 'index' → redirect to /card/{phone}
+         *   - pageType === 'verify' → redirect to /card/{phone} (already verified)
          *   - pageType === 'card' or 'admin' → continue loading
          * - If session invalid (401):
          *   - pageType === 'card' or 'admin' → redirect to /
@@ -110,11 +111,12 @@
                     // Session is valid
                     const user = await response.json();
 
-                    if (pageType === 'index') {
-                        // On home page with valid session → redirect to card
+                    if (pageType === 'index' || pageType === 'verify') {
+                        // On home or verify page with valid session → redirect to card
+                        // User is already verified, no need to stay on these pages
                         window.location.href = `/card/${encodeURIComponent(user.phone)}`;
                     }
-                    // For 'card', 'verify', 'admin' → continue loading page
+                    // For 'card', 'admin' → continue loading page
 
                 } else {
                     // Session is invalid (401 Unauthorized)
