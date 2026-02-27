@@ -70,6 +70,20 @@ async def root(request: Request):
     return request.state.templates.TemplateResponse("index.html", {"request": request})
 
 
+@router.get("/splash", response_class=HTMLResponse)
+async def splash_page(request: Request):
+    """
+    Splash screen for PWA - displayed when app is launched from home screen.
+
+    Args:
+        request: FastAPI request object (required for templates)
+
+    Returns:
+        Rendered splash screen HTML template
+    """
+    return request.state.templates.TemplateResponse("splash.html", {"request": request})
+
+
 @router.get("/verify", response_class=HTMLResponse)
 async def verify_page(request: Request):
     """
