@@ -5,11 +5,11 @@
 {% block title %}Моя карта - Антошкин дворик{% endblock %}
 
 {% block content %}
-<div class="min-h-screen flex flex-col px-6 py-12 lg:px-8 safe-top">
+<div class="min-h-screen flex flex-col px-6 py-12 lg:px-8 safe-top bg-gray-100">
     <!-- Header -->
-    <div class="sm:mx-auto sm:w-full sm:max-w-md text-center mb-8">
+    <div class="sm:mx-auto sm:w-full sm:max-w-md text-center mb-6">
         <h1 class="text-3xl font-bold text-gray-900">
-            Ваша карта лояльности
+            Ваша карта
         </h1>
         <p class="mt-2 text-sm text-gray-600">
             Покажите QR-код кассиру для получения скидки
@@ -26,7 +26,7 @@
 
     <!-- Card Container (hidden until session verified) -->
     <div id="cardContainer" class="sm:mx-auto sm:w-full sm:max-w-md hidden">
-        <div class="bg-gradient-to-br from-[#9FCA3D] to-[#8AB530] rounded-2xl shadow-2xl overflow-hidden">
+        <div class="bg-gradient-to-br from-[#D5E6B6] to-[#C7E195] rounded-2xl shadow-2xl overflow-hidden">
             <!-- Card Header -->
             <div class="bg-[#7A9F2A] bg-opacity-50 px-6 py-4">
                 <div class="flex items-center justify-between">
@@ -41,19 +41,13 @@
 
             <!-- Card Body -->
             <div class="px-6 py-8">
-                <!-- Card Mockup Image with QR in corner -->
-                <div class="relative mb-6">
+                <!-- Card Mockup Image -->
+                <div class="mb-6">
                     <img
                         src="/static/card-mockup.png"
                         alt="Скидочная карта Антошкин дворик"
                         class="w-full h-auto rounded-lg shadow-md"
                     >
-                    <!-- QR Code (small icon in corner, click to enlarge) -->
-                    <div
-                        id="qrcode"
-                        class="absolute top-2 right-2 w-12 h-12 bg-white p-1 rounded-lg shadow-lg cursor-pointer transition-transform hover:scale-110"
-                        onclick="toggleQRSize()"
-                    ></div>
                 </div>
 
                 <!-- User Info -->
@@ -66,14 +60,24 @@
                     </p>
                 </div>
 
-                <!-- Card ID -->
-                <div class="text-center">
-                    <p class="text-green-100 text-xs">
-                        Номер карты
-                    </p>
-                    <p class="text-white text-lg font-mono font-semibold">
-                        #{{ user.id }}
-                    </p>
+                <!-- Card ID with QR Code -->
+                <div class="flex items-center justify-center gap-3">
+                    <!-- QR Code (small icon, click to enlarge) -->
+                    <div
+                        id="qrcode"
+                        class="w-12 h-12 bg-white p-1 rounded-lg shadow-lg cursor-pointer transition-transform hover:scale-110 flex-shrink-0"
+                        onclick="toggleQRSize()"
+                    ></div>
+                    
+                    <!-- Card Number -->
+                    <div class="text-center">
+                        <p class="text-green-100 text-xs">
+                            Номер карты
+                        </p>
+                        <p class="text-white text-lg font-mono font-semibold">
+                            #{{ user.id }}
+                        </p>
+                    </div>
                 </div>
             </div>
 
@@ -231,30 +235,54 @@
         }
     }
 
-    // Toggle QR code size on click
+    // Toggle QR code size on click - regenerate QR at proper size
     function toggleQRSize() {
         const qrContainer = document.getElementById('qrcode');
         
         if (isQREnlarged) {
             // Shrink back to icon size
             qrContainer.style.position = 'absolute';
-            qrContainer.style.top = '0.5rem';
-            qrContainer.style.right = '0.5rem';
+            qrContainer.style.bottom = '0.5rem';
+            qrContainer.style.left = '0.5rem';
             qrContainer.style.width = '3rem';
             qrContainer.style.height = '3rem';
             qrContainer.style.padding = '0.25rem';
             qrContainer.style.zIndex = '10';
+            
+            // Regenerate small QR
+            qrContainer.innerHTML = '';
+            qrInstance = new QRCode(qrContainer, {
+                text: JSON.stringify({ user_id: user.id, phone: user.phone }),
+                width: 48,
+                height: 48,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+            
             isQREnlarged = false;
         } else {
             // Enlarge to 180x180
             qrContainer.style.position = 'fixed';
             qrContainer.style.top = '50%';
-            qrContainer.style.right = '50%';
-            qrContainer.style.transform = 'translate(50%, -50%)';
+            qrContainer.style.left = '50%';
+            qrContainer.style.transform = 'translate(-50%, -50%)';
             qrContainer.style.width = '180px';
             qrContainer.style.height = '180px';
-            qrContainer.style.padding = '1rem';
+            qrContainer.style.padding = '10px';
             qrContainer.style.zIndex = '1000';
+            
+            // Regenerate large QR
+            qrContainer.innerHTML = '';
+            qrInstance = new QRCode(qrContainer, {
+                text: JSON.stringify({ user_id: user.id, phone: user.phone }),
+                width: 180,
+                height: 180,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+            
             isQREnlarged = true;
         }
     }
