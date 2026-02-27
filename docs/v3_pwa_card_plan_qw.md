@@ -190,6 +190,38 @@ ifconfig | grep inet    # Linux
 - Нужно создать PNG 180x180
 - ✅ Быстро
 
+1. Создать иконку:
+  - Формат: PNG
+  - Размер: 180x180 пикселей (для iOS)
+  - Можно также 192x192 и 512x512 для Android/PWA
+
+2. Положить в папку:
+  - static/icon-180.png
+  - static/icon-192.png
+  - static/icon-512.png
+
+3. Обновить manifest.json:
+```
+    {
+      "icons": [
+        {
+          "src": "/static/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        },
+        {
+          "src": "/static/icon-512.png",
+          "sizes": "512x512",
+          "type": "image/png"
+        }
+      ]
+    }
+```
+4. Обновить base.html:
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+
+Итого: Ты можешь нарисовать иконку в любом графическом редакторе (Photoshop, Figma, Canva) → сохранить как PNG → положить в static/ → обновить manifest.json и base.html. Никакой дополнительный код не нужен!
+
 **2. Splash Screen**
 ```json
 // static/manifest.json
