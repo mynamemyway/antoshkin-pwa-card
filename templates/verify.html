@@ -70,6 +70,17 @@
                     </div>
                 </div>
 
+                <!-- Success Message -->
+                <div id="successMessage" class="hidden">
+                    <div class="rounded-md bg-green-50 p-4">
+                        <div class="flex">
+                            <div class="ml-3">
+                                <h3 class="text-sm font-medium text-green-800" id="successText"></h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Submit Button -->
                 <div>
                     <button
@@ -245,10 +256,18 @@
         const resendTimer = document.getElementById('resendTimer');
         const resendCountdown = document.getElementById('resendCountdown');
         const phone = document.getElementById('phone').value;
+        const successMessage = document.getElementById('successMessage');
+        const successText = document.getElementById('successText');
+        const errorMessage = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
 
         // Disable button
         resendBtn.disabled = true;
         resendBtn.textContent = 'Отправка...';
+
+        // Hide previous messages
+        successMessage.classList.add('hidden');
+        errorMessage.classList.add('hidden');
 
         try {
             // Send resend request
@@ -293,15 +312,19 @@
             document.getElementById('code').value = '';
             document.getElementById('code').focus();
 
-            // Show success message
-            alert('Новый код отправлен!');
+            // Show success message for 3 seconds
+            successText.textContent = '✅ Новый код отправлен!';
+            successMessage.classList.remove('hidden');
+            setTimeout(() => {
+                successMessage.classList.add('hidden');
+            }, 3000);
 
         } catch (error) {
-            alert('Ошибка: ' + error.message);
+            // Show error message
+            errorText.textContent = error.message;
+            errorMessage.classList.remove('hidden');
             resendBtn.disabled = false;
         }
-
-        resendBtn.textContent = 'Отправлено!';
     }
 
     // Format phone for display
