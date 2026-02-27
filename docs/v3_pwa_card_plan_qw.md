@@ -47,9 +47,7 @@
 4. **Системное уведомление (alert):**
    - **Баг!** В `verify.html` есть `alert('Новый код отправлен!')`
    - Нужно заменить на красивое UI-сообщение.
-
-**Варианты реализации:**
-
+   
 **Исправление alert:**
 Заменить системный alert на скрытый блок в HTML, который показывается на 3 секунды после отправки кода.
 
@@ -202,70 +200,38 @@ ifconfig | grep inet    # Linux
 - Требует отдельный HTML
 - ⏳ Средне
 
-**3. Push-уведомления**
-Требует HTTPS и сервис-воркер.
-- ❌ Сложно, отложить на потом
-
 ---
 
 ### 7.7. Улучшение Безопасности
 
-```
-#### Rate Limiting для /api/send-sms (опционально)
+1. Rate Limiting для /api/send-sms (опционально)
 * **Файл:** `app/middleware/rate_limit.py`
 * **Логика:**
   - Максимум 3 SMS в час на один номер
   - Блокировка по IP или phone
   - **Статус:** Не реализовано (можно добавить позже)
 
-#### HTTPS для продакшена (деплой)
-* **Файл:** `nginx.conf` или инструкция для Selectel
+2. HTTPS для продакшена (деплой)
+* **Файл:** `nginx.conf`
 * **Логика:**
   - SSL-сертификат Let's Encrypt
   - Редирект HTTP → HTTPS
   - Secure cookie только для HTTPS
   - **Статус:** Задача деплоя (не кода)
-```
 
 **Статус:** Рекомендуется для продакшена.
 
 **Варианты реализации:**
 
 **1. Rate Limiting для /api/send-sms**
-```python
-# app/middleware/rate_limit.py
-from slowapi import Limiter
-limiter = Limiter(key_func=get_remote_address)
-
-@router.post("/api/send-sms")
-@limiter.limit("3/hour")
-async def send_sms_code(...):
-    ...
-```
 - Пакет: `slowapi`
 - ✅ Защищает от накрутки SMS
 
 **2. Хеширование SMS-кодов**
-```python
-# app/services/sms_service.py
-import bcrypt
-
-# При сохранении
-hashed = bcrypt.hashpw(code.encode(), bcrypt.gensalt())
-user.sms_code_hash = hashed
-
-# При проверке
-bcrypt.checkpw(input_code.encode(), user.sms_code_hash)
-```
 - ✅ Безопаснее (код не хранится в открытом виде)
 - ⏳ Требует изменения модели
 
 **3. Валидация User-Agent**
-```python
-# Middleware для проверки User-Agent
-if "bot" in request.headers.get("user-agent", "").lower():
-    raise HTTPException(status_code=403, detail="Bots not allowed")
-```
 - ✅ Простая защита от ботов
 
 ---
