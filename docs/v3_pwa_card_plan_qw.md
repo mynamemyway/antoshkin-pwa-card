@@ -233,6 +233,16 @@ ifconfig | grep inet    # Linux
     - `/static/icon-512.png` (512x512)
   - Иконки должны быть созданы вручную и помещены в `static/`
 
+#### 4.4. Splash Screen (7.6)
+* **Цель:** Создать экран заставки при запуске PWA.
+* **Файлы:** `templates/splash.html`, `static/manifest.json`, `templates/base.html`
+* **Логика:**
+  - Создать splash.html с фирменным логотипом и анимацией загрузки
+  - Добавить `splash_pages` в manifest.json
+  - Добавить iOS meta-теги в base.html
+  - Авто-редирект на главную через 1.5 секунды
+  - Добавить роутер `/splash` в routers.py
+
 ---
 
 ### Этап 5: Тестирование
