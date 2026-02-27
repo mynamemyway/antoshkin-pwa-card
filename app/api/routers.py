@@ -222,26 +222,23 @@ async def send_sms_code(sms_data: SMSRequest, db: Session = Depends(get_db)):
         HTTPException: If user not found
     """
     user = get_user_by_phone(db, sms_data.phone)
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    if user.is_verified:
-        # User already verified, no need to send SMS
-        return SMSResponse(sent=True)
-    
-    # Generate and save code
+
+    # Generate and save code (for ALL users, including verified)
+    # Verified users need SMS code for re-login after logout
     code = generate_sms_code()
     user.sms_code = code
     user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
     db.commit()
-    
+
     # Send SMS
     sms_sent = send_sms(user.phone, code)
-    
+
     if not sms_sent:
         raise HTTPException(status_code=500, detail="Failed to send SMS")
-    
+
     return SMSResponse(sent=True)
 
 
@@ -264,43 +261,38 @@ async def verify_code(
 
     Raises:
         HTTPException: If user not found, code invalid, or expired
+
+    Note:
+        All users must enter SMS code for verification, including previously verified users.
+        This ensures security when logging in after logout.
     """
     user = get_user_by_phone(db, verify_data.phone)
 
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
 
-    if user.is_verified:
-        # Already verified - create session and set cookie
-        token = create_session(db, user.id)
-        response.set_cookie(
-            key=COOKIE_NAME,
-            value=token,
-            max_age=COOKIE_MAX_AGE,
-            path=COOKIE_PATH,
-            httponly=True,
-            secure=True,
-            samesite="lax"
-        )
-        return VerifyResponse(verified=True)
-
-    # Check code and expiration
+    # Check if code exists (required for all users, including verified)
     if not user.sms_code:
-        raise HTTPException(status_code=400, detail="No SMS code sent")
+        raise HTTPException(status_code=400, detail="Код не был отправлен")
 
-    if user.sms_code_expires_at < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="SMS code expired")
+    # Check if code has expired
+    if user.sms_code_expires_at is None or datetime.utcnow() > user.sms_code_expires_at:
+        raise HTTPException(status_code=400, detail="Срок действия кода истёк")
 
+    # Compare codes
     if user.sms_code != verify_data.code:
-        raise HTTPException(status_code=400, detail="Invalid SMS code")
+        raise HTTPException(status_code=400, detail="Неверный код")
 
-    # Mark as verified
-    user.is_verified = True
+    # Code is valid - mark as verified if not already
+    if not user.is_verified:
+        user.is_verified = True
+    
+    # Clear SMS code after successful verification
     user.sms_code = None
     user.sms_code_expires_at = None
     db.commit()
 
-    # Create session and set cookie (only for newly verified users)
+    # Create session and set cookie
     token = create_session(db, user.id)
 
     # Set HttpOnly cookie
