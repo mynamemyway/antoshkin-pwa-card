@@ -10,30 +10,14 @@
 **Варианты реализации:**
 
 **Вариант A: Простой поиск (frontend)**
-```javascript
-// Добавить поле поиска в admin.html
-<input type="text" id="searchPhone" placeholder="Поиск по телефону">
-
-// Фильтрация таблицы на клиенте
-function filterTable(searchTerm) {
-    // Фильтровать строки таблицы по совпадению с phone
-}
-```
+Добавить поле поиска в admin.html и JavaScript-функцию для фильтрации строк таблицы на клиенте.
 - ✅ Быстро, просто
 - ❌ Не масштабируется при >1000 записей
 
 **Вариант B: Поиск через API (backend)**
-```python
-# app/api/routers.py
-@router.get("/admin/search")
-async def search_users(q: str, db: Session):
-    users = db.query(User).filter(User.phone.contains(q)).limit(50).all()
-    return users
-```
+Создать новый эндпоинт для поиска с фильтрацией через SQL LIKE.
 - ✅ Работает с большой базой
 - ❌ Требует изменения API
-
-**Рекомендация:** Начать с Варианта A, при росте базы >1000 записей перейти на B.
 
 ---
 
@@ -44,7 +28,7 @@ async def search_users(q: str, db: Session):
 - Закончилось время 5 минут, ввёл код и он не сработал - всё верно
 - Закончилось время 5 минут, сразу ввёл код и он сработал - почему? Предполагаю, что он не умирает для уже зарегистрированного пользователя? Проверить.
 - При отправке повторного СМС выскакивает некрасивое всплывающее системное уведомление - убрать, оно избыточно.
-*В целом таймер работает хорошо, пока не понимаю баги разовые или есть ошибки в логике* 
+*В целом таймер работает хорошо, пока не понимаю баги разовые или есть ошибки в логике*
 
 **Ответы по пунктам:**
 
@@ -57,11 +41,7 @@ async def search_users(q: str, db: Session):
    - ✅ Так и задумано — код больше не действителен
 
 3. **Код сработал после истечения времени:**
-   - **Баг!** Проверка в роутере:
-   ```python
-   if user.sms_code_expires_at < datetime.utcnow():
-       raise HTTPException(status_code=400, detail="SMS code expired")
-   ```
+   - **Баг!** Проверка в роутере должна блокировать вход с истёкшим кодом.
    - Возможно, для уже верифицированного пользователя (`user.is_verified=True`) проверка пропускается — это нужно исправить.
 
 4. **Системное уведомление (alert):**
@@ -71,16 +51,7 @@ async def search_users(q: str, db: Session):
 **Варианты реализации:**
 
 **Исправление alert:**
-```javascript
-// Было
-alert('Новый код отправлен!');
-
-// Стало - показать красивое сообщение
-const messageEl = document.getElementById('resendMessage');
-messageEl.textContent = '✅ Новый код отправлен!';
-messageEl.classList.remove('hidden');
-setTimeout(() => messageEl.classList.add('hidden'), 3000);
-```
+Заменить системный alert на скрытый блок в HTML, который показывается на 3 секунды после отправки кода.
 
 ---
 
@@ -92,31 +63,14 @@ setTimeout(() => messageEl.classList.add('hidden'), 3000);
 **Варианты реализации:**
 
 **Вариант A: Перевод на уровне API**
-```python
-# app/api/routers.py
-@router.post("/api/verify")
-async def verify_code(...):
-    if user.sms_code_expires_at < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="Срок действия кода истёк")
-```
+Менять текст ошибок в Python-коде (app/api/routers.py) на русский.
 - ✅ Все сообщения на русском
 - ❌ Нужно менять все строки в API
 
 **Вариант B: Перевод на уровне frontend**
-```javascript
-// templates/verify.html
-const errorMessages = {
-    'SMS code expired': 'Срок действия кода истёк',
-    'Invalid SMS code': 'Неверный код',
-    'No SMS code sent': 'Код не был отправлен'
-};
-
-errorText.textContent = errorMessages[error.message] || error.message;
-```
+Создать JavaScript-словарь для перевода английских сообщений на русский.
 - ✅ Быстро, централизованно
 - ❌ Нужно поддерживать соответствие сообщений
-
-**Рекомендация:** Вариант B — быстрее и проще поддерживать.
 
 ---
 
@@ -165,12 +119,9 @@ ifconfig | grep inet    # Linux
 - ❌ Только в одной Wi-Fi сети
 - ❌ Нет HTTPS (PWA не будет работать)
 
-**Рекомендация:** Cloudflare Tunnel — бесплатно, HTTPS, работает в РФ.
-
 ---
 
 ### 7.5. Дизайн карты
-
 *Дизайн карты сделать в стиле и размере apple wallet:*
 - Вверху надписи оставить также как есть (название карты и магазина)
 - Ниже вставить изображение скидочной карты по горизонтали (макет есть .tif)
@@ -250,6 +201,10 @@ ifconfig | grep inet    # Linux
 ```
 - Требует отдельный HTML
 - ⏳ Средне
+
+**3. Push-уведомления**
+Требует HTTPS и сервис-воркер.
+- ❌ Сложно, отложить на потом
 
 ---
 
