@@ -41,27 +41,37 @@
 
             <!-- Card Body -->
             <div class="px-6 py-8">
-                <!-- User Info -->
+                <!-- Card Mockup Image -->
                 <div class="text-center mb-6">
-                    <p class="text-green-50 text-sm mb-1">
-                        Владелец карты
-                    </p>
+                    <img
+                        src="/static/card-mockup.png"
+                        alt="Скидочная карта Антошкин дворик"
+                        class="w-full h-auto rounded-lg shadow-md"
+                    >
+                </div>
+
+                <!-- QR Code Container (click to enlarge) -->
+                <div class="flex justify-center mb-6">
+                    <div
+                        id="qrcode"
+                        class="bg-white p-3 rounded-lg shadow-lg cursor-pointer transition-transform hover:scale-105"
+                        onclick="toggleQRSize()"
+                    ></div>
+                </div>
+
+                <!-- User Info -->
+                <div class="text-center mb-4">
                     <p class="text-white text-xl font-bold" id="userName">
                         {{ user.full_name }}
                     </p>
-                    <p class="text-green-100 text-sm mt-2" id="userPhone">
+                    <p class="text-green-100 text-sm mt-1" id="userPhone">
                         {{ user.phone }}
                     </p>
                 </div>
 
-                <!-- QR Code Container -->
-                <div class="flex justify-center mb-6">
-                    <div id="qrcode" class="bg-white p-4 rounded-lg shadow-lg"></div>
-                </div>
-
                 <!-- Card ID -->
                 <div class="text-center">
-                    <p class="text-emerald-200 text-xs">
+                    <p class="text-green-100 text-xs">
                         Номер карты
                     </p>
                     <p class="text-white text-lg font-mono font-semibold">
@@ -71,8 +81,8 @@
             </div>
 
             <!-- Card Footer -->
-            <div class="bg-emerald-800 bg-opacity-30 px-6 py-4">
-                <p class="text-emerald-200 text-xs text-center">
+            <div class="bg-[#7A9F2A] bg-opacity-30 px-6 py-4">
+                <p class="text-green-100 text-xs text-center">
                     Действует во всех магазинах сети
                 </p>
             </div>
@@ -266,6 +276,23 @@
         document.getElementById('loadingState').classList.add('hidden');
         document.getElementById('cardContainer').classList.add('hidden');
         document.getElementById('backContainer').classList.remove('hidden');
+    }
+
+    // Toggle QR code size on click
+    let isQREnlarged = false;
+    function toggleQRSize() {
+        const qrContainer = document.getElementById('qrcode');
+        if (isQREnlarged) {
+            // Shrink back
+            qrContainer.style.transform = 'scale(1)';
+            qrContainer.style.padding = '0.75rem';
+            isQREnlarged = false;
+        } else {
+            // Enlarge
+            qrContainer.style.transform = 'scale(1.5)';
+            qrContainer.style.padding = '1.5rem';
+            isQREnlarged = true;
+        }
     }
 
     // Initialize page
