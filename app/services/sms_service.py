@@ -150,28 +150,28 @@ def verify_sms_code(
     # Check if already verified
     if user.is_verified:
         return True, "Already verified"
-    
+
     # Check if code exists
     if not user.sms_code:
-        return False, "No SMS code sent"
-    
+        return False, "Код не был отправлен"
+
     # Check if code has expired
     if user.sms_code_expires_at is None:
-        return False, "SMS code error"
-    
+        return False, "Ошибка SMS кода"
+
     if datetime.utcnow() > user.sms_code_expires_at:
-        return False, "SMS code expired"
-    
+        return False, "Срок действия кода истёк"
+
     # Compare codes (constant-time comparison for security)
     if user.sms_code != code:
-        return False, "Invalid code"
-    
+        return False, "Неверный код"
+
     # Code is valid - mark user as verified
     user.is_verified = True
     user.sms_code = None
     user.sms_code_expires_at = None
     db.commit()
-    
+
     return True, "Verified"
 
 
