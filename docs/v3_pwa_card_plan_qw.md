@@ -178,34 +178,15 @@ ifconfig | grep inet    # Linux
 ```
 - Нужно создать PNG 180x180
 - ✅ Быстро
-
 1. Создать иконку:
   - Формат: PNG
   - Размер: 180x180 пикселей (для iOS)
   - Можно также 192x192 и 512x512 для Android/PWA
-
 2. Положить в папку:
   - static/icon-180.png
   - static/icon-192.png
   - static/icon-512.png
-
-3. Обновить manifest.json:
-```
-    {
-      "icons": [
-        {
-          "src": "/static/icon-192.png",
-          "sizes": "192x192",
-          "type": "image/png"
-        },
-        {
-          "src": "/static/icon-512.png",
-          "sizes": "512x512",
-          "type": "image/png"
-        }
-      ]
-    }
-```
+3. Обновить manifest.json
 4. Обновить base.html:
 <link rel="apple-touch-icon" href="/static/icon-180.png">
 
