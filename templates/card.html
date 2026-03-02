@@ -41,7 +41,7 @@
                     <div class="mt-2 text-sm text-blue-700">
                         <p class="mb-2">
                             <strong>iPhone:</strong><br>
-                            «Поделиться» → «Добавить на экран Домой»
+                            «Поделиться» → «Добавить на экран домой»
                         </p>
                         <p>
                             <strong>Android:</strong><br>
@@ -120,7 +120,7 @@
             </button>
             <button
                 id="showHintLink"
-                onclick="showInstallHint()"
+                onclick="showInstallHintManual()"
                 class="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium hidden"
             >
                 Показать инструкцию
@@ -262,12 +262,29 @@
 
     // Show install hint (iOS + Android)
     function showInstallHint() {
-        // Clear the dismissed flag
-        localStorage.removeItem('install_hint_dismissed');
+        const hintElement = document.getElementById('installHint');
+        const linkElement = document.getElementById('showHintLink');
         
-        // Show the hint
-        document.getElementById('installHint').classList.remove('hidden');
-        document.getElementById('showHintLink').classList.add('hidden');
+        // Check if user dismissed hint before
+        const dismissed = localStorage.getItem('install_hint_dismissed');
+        
+        // Check if already installed (standalone mode)
+        if (isStandalone()) {
+            // In standalone app: hide both hint and link
+            hintElement.classList.add('hidden');
+            linkElement.classList.add('hidden');
+            return;
+        }
+        
+        if (dismissed === 'true') {
+            // User dismissed before: hide hint, show link
+            hintElement.classList.add('hidden');
+            linkElement.classList.remove('hidden');
+        } else {
+            // First time: show hint, hide link
+            hintElement.classList.remove('hidden');
+            linkElement.classList.add('hidden');
+        }
     }
 
     // Dismiss install hint (don't show again)
@@ -275,6 +292,16 @@
         localStorage.setItem('install_hint_dismissed', 'true');
         document.getElementById('installHint').classList.add('hidden');
         document.getElementById('showHintLink').classList.remove('hidden');
+    }
+
+    // Show hint manually (called by "Показать инструкцию" link)
+    function showInstallHintManual() {
+        // Clear the dismissed flag
+        localStorage.removeItem('install_hint_dismissed');
+        
+        // Show the hint, hide the link
+        document.getElementById('installHint').classList.remove('hidden');
+        document.getElementById('showHintLink').classList.add('hidden');
     }
 
     // Show session error state
