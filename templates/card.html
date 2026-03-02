@@ -26,7 +26,39 @@
 
     <!-- Card Container (hidden until session verified) -->
     <div id="cardContainer" class="sm:mx-auto sm:w-full sm:max-w-md hidden">
-        <div class="bg-gradient-to-br from-[#8EB946] to-[#C7E195] rounded-2xl shadow-2xl overflow-hidden">
+        <!-- Add to Home Screen Hint (iOS + Android) - TOP -->
+        <div id="installHint" class="mx-4 mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 hidden">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                    </svg>
+                </div>
+                <div class="ml-3 flex-grow">
+                    <h3 class="text-sm font-medium text-blue-800">
+                        Установите приложение, чтобы карта всегда была под рукой
+                    </h3>
+                    <div class="mt-2 text-sm text-blue-700">
+                        <p class="mb-2">
+                            <strong>iPhone:</strong><br>
+                            «Поделиться» → «Добавить на экран Домой»
+                        </p>
+                        <p>
+                            <strong>Android:</strong><br>
+                            «⋮» → «Добавить на гл. экран»
+                        </p>
+                    </div>
+                    <button
+                        onclick="dismissInstallHint()"
+                        class="mt-3 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                        × Не показывать снова
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-gradient-to-br from-[#8EB946] to-[#C7E195] rounded-2xl shadow-2xl overflow-hidden mx-4 mt-4 mb-6">
             <!-- Card Header -->
             <div class="bg-[#7A9F2A] bg-opacity-50 px-6 py-4">
                 <div class="flex items-center justify-between">
@@ -74,38 +106,6 @@
                 <p class="text-green-100 text-xs text-center">
                     Действует во всех магазинах сети
                 </p>
-            </div>
-        </div>
-
-        <!-- Add to Home Screen Hint (iOS + Android) -->
-        <div id="installHint" class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 hidden">
-            <div class="flex">
-                <div class="flex-shrink-0">
-                    <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
-                    </svg>
-                </div>
-                <div class="ml-3 flex-grow">
-                    <h3 class="text-sm font-medium text-blue-800">
-                        Установите приложение, чтобы карта всегда была под рукой
-                    </h3>
-                    <div class="mt-2 text-sm text-blue-700">
-                        <p class="mb-2">
-                            <strong>iPhone:</strong><br>
-                            «Поделиться» → «Добавить на экран Домой»
-                        </p>
-                        <p>
-                            <strong>Android:</strong><br>
-                            «⋮» → «Установить приложение»
-                        </p>
-                    </div>
-                    <button
-                        onclick="dismissInstallHint()"
-                        class="mt-3 text-xs text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                        × Не показывать снова
-                    </button>
-                </div>
             </div>
         </div>
 
