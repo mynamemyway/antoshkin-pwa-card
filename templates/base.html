@@ -16,13 +16,13 @@
 
     <!-- Apple Touch Icon (PNG required, SVG not supported on iOS) -->
     <link rel="apple-touch-icon" href="/static/icon-180.png">
-    
+
     <!-- Title -->
     <title>{% block title %}Карта лояльности Антошкин дворик{% endblock %}</title>
-    
+
     <!-- Tailwind CSS (CDN for development) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
+
     <!-- Tailwind Config -->
     <script>
         tailwind.config = {
@@ -36,49 +36,49 @@
             }
         }
     </script>
-    
+
     <!-- Additional Head Content -->
     {% block extra_head %}{% endblock %}
-    
+
     <!-- iOS Safari Fixes -->
     <style>
         /* Prevent zoom on input focus */
         input, select, textarea {
             font-size: 16px !important;
         }
-        
+
         /* Full height for mobile */
         html, body {
             height: 100%;
             margin: 0;
             padding: 0;
         }
-        
+
         /* Safe area for iPhone notch */
         .safe-top {
             padding-top: env(safe-area-inset-top);
         }
-        
+
         .safe-bottom {
             padding-bottom: env(safe-area-inset-bottom);
         }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen flex flex-col">
-    <!-- Main Content -->
-    <main class="flex-grow">
+<body class="bg-gray-50 h-screen flex flex-col overflow-hidden">
+    <!-- Main Content (scrollable if needed) -->
+    <main class="flex-grow overflow-y-auto">
         {% block content %}{% endblock %}
     </main>
-    
-    <!-- Footer -->
-    <footer class="bg-white border-t border-gray-200 py-4 safe-bottom">
-        <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
+
+    <!-- Footer (always visible at bottom) -->
+    <footer class="bg-white border-t border-gray-200 py-2 safe-bottom flex-shrink-0">
+        <div class="container mx-auto px-4 text-center text-gray-500 text-xs">
             {% block footer %}
             <p>&copy; 2025 Антошкин дворик. Все права защищены.</p>
             {% endblock %}
         </div>
     </footer>
-    
+
     <!-- JavaScript -->
     {% block scripts %}{% endblock %}
 
@@ -87,9 +87,9 @@
         /**
          * Global session check function for all pages.
          * Calls /api/me to validate session (browser auto-attaches cookie).
-         * 
+         *
          * @param {string} pageType - Type of current page: 'index', 'card', 'verify', 'admin'
-         * 
+         *
          * Logic:
          * - If session valid (200 OK):
          *   - pageType === 'index' → redirect to /card/{phone}
@@ -98,7 +98,7 @@
          * - If session invalid (401):
          *   - pageType === 'card' or 'admin' → redirect to /
          *   - pageType === 'index' or 'verify' → continue loading
-         * 
+         *
          * Usage in child templates:
          *   document.addEventListener('DOMContentLoaded', function() {
          *       checkSession('index');  // or 'card', 'verify', 'admin'
