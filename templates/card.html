@@ -40,9 +40,9 @@
             </div>
 
             <!-- Card Body -->
-            <div class="px-6 py-8">
+            <div class="px-6 py-6">
                 <!-- Card Mockup Image -->
-                <div class="mb-6">
+                <div class="mb-4">
                     <img
                         src="/static/card-mockup.png"
                         alt="Скидочная карта Антошкин дворик"
@@ -51,24 +51,21 @@
                 </div>
 
                 <!-- User Info (left: name, right: phone) -->
-                <div class="flex justify-between items-center mb-6 px-2">
-                    <p class="text-white text-base font-semibold" id="userName">
+                <div class="flex justify-between items-center mb-6 px-0">
+                    <p class="text-white text-base font-light" id="userName">
                         {{ user.full_name }}
                     </p>
-                    <p class="text-white text-base font-semibold" id="userPhone">
+                    <p class="text-white text-base font-light" id="userPhone">
                         {{ user.phone }}
                     </p>
                 </div>
 
-                <!-- QR Code (large, no enlargement) -->
-                <div class="flex flex-col items-center mb-4">
+                <!-- QR Code -->
+                <div class="flex justify-center mb-0">
                     <div
                         id="qrcode"
                         class="bg-white p-4 rounded-lg shadow-lg"
                     ></div>
-                    <p class="text-white text-lg font-mono font-semibold mt-3">
-                        #{{ user.id }}
-                    </p>
                 </div>
             </div>
 
@@ -157,7 +154,7 @@
             phone: user.phone
         });
 
-        // Create QR code (large size, no toggle)
+        // Create QR code
         qrInstance = new QRCode(qrContainer, {
             text: qrData,
             width: 100,
