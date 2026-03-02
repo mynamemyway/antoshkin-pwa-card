@@ -27,7 +27,7 @@
     <!-- Card Container (hidden until session verified) -->
     <div id="cardContainer" class="sm:mx-auto sm:w-full sm:max-w-md hidden">
         <!-- Add to Home Screen Hint (iOS + Android) - TOP -->
-        <div id="installHint" class="mx-4 mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 hidden">
+        <div id="installHint" class="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 hidden">
             <div class="flex">
                 <div class="flex-shrink-0">
                     <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
@@ -36,7 +36,7 @@
                 </div>
                 <div class="ml-3 flex-grow">
                     <h3 class="text-sm font-medium text-blue-800">
-                        Установите приложение, чтобы карта всегда была под рукой
+                        Установите, чтобы карта всегда была под рукой
                     </h3>
                     <div class="mt-2 text-sm text-blue-700">
                         <p class="mb-2">
@@ -58,7 +58,7 @@
             </div>
         </div>
 
-        <div class="bg-gradient-to-br from-[#8EB946] to-[#C7E195] rounded-2xl shadow-2xl overflow-hidden mx-4 mt-4 mb-6">
+        <div class="bg-gradient-to-br from-[#8EB946] to-[#C7E195] rounded-2xl shadow-2xl overflow-hidden mt-4 mb-6">
             <!-- Card Header -->
             <div class="bg-[#7A9F2A] bg-opacity-50 px-6 py-4">
                 <div class="flex items-center justify-between">
@@ -117,6 +117,13 @@
                 class="w-full flex justify-center py-3 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors"
             >
                 Выйти
+            </button>
+            <button
+                id="showHintLink"
+                onclick="showInstallHint()"
+                class="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium hidden"
+            >
+                Показать инструкцию
             </button>
         </div>
     </div>
@@ -255,25 +262,19 @@
 
     // Show install hint (iOS + Android)
     function showInstallHint() {
-        // Check if user dismissed hint before
-        const dismissed = localStorage.getItem('install_hint_dismissed');
-        if (dismissed === 'true') {
-            return;  // Don't show if dismissed
-        }
-
-        // Check if already installed (standalone mode)
-        if (isStandalone()) {
-            return;  // Don't show if already installed
-        }
-
-        // Show hint for all users (iOS and Android)
+        // Clear the dismissed flag
+        localStorage.removeItem('install_hint_dismissed');
+        
+        // Show the hint
         document.getElementById('installHint').classList.remove('hidden');
+        document.getElementById('showHintLink').classList.add('hidden');
     }
 
     // Dismiss install hint (don't show again)
     function dismissInstallHint() {
         localStorage.setItem('install_hint_dismissed', 'true');
         document.getElementById('installHint').classList.add('hidden');
+        document.getElementById('showHintLink').classList.remove('hidden');
     }
 
     // Show session error state
