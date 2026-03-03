@@ -12,109 +12,122 @@ Functions:
 - verify_sms_code: Validate code and mark user as verified
 
 Testing:
-    For local testing, the code is always "0000" (TEST_MODE=True).
-    Set TEST_MODE=False for production with real SMS codes.
+    For local testing, the code is always "0000" (SMS_TEST_MODE=True).
+    Set SMS_TEST_MODE=False for production with real SMS codes.
 """
 
+import logging
 import random
 from datetime import datetime, timedelta
 from typing import Tuple
+
+import requests
 from sqlalchemy.orm import Session
 
-from app.models import User
 from app.config import settings
+from app.models import User
 
+# Configure logging
+logger = logging.getLogger(__name__)
 
-# Test mode flag: set to True for testing without real SMS
-TEST_MODE = True
+# Test code for development mode
 TEST_CODE = "0000"  # Universal code for testing
 
 
 def generate_sms_code() -> str:
     """
     Generate 4-digit SMS verification code.
-    
+
     Returns:
-        In TEST_MODE: always returns "0000"
+        In SMS_TEST_MODE: always returns "0000"
         In production: random 4-digit code (0000-9999)
-    
+
     Note:
         Code is zero-padded to ensure exactly 4 digits.
-    
+
     Usage:
         code = generate_sms_code()
         print(f"Your code: {code}")  # "Your code: 0000" (test mode)
     """
-    if TEST_MODE:
+    if settings.SMS_TEST_MODE:
         return TEST_CODE
-    
+
     return f"{random.randint(0, 9999):04d}"
 
 
 def send_sms(phone: str, code: str) -> Tuple[bool, str]:
     """
     Send SMS with verification code via SMS gateway.
-    
+
     Args:
         phone: Normalized phone number (+7XXXXXXXXXX)
         code: 4-digit verification code
-    
+
     Returns:
         Tuple of (success: bool, message: str)
         - (True, "SMS sent") if successful
         - (False, "Error message") if failed
-    
+
     Note:
-        Currently implements stub logic (prints to console).
-        Replace with actual SMS.ru API integration when API key is provided.
-    
-    SMS.ru API example:
+        In test mode (SMS_TEST_MODE=True), returns stub response.
+        In production, sends SMS via SMS.ru API.
+
+    SMS.ru API:
         GET https://sms.ru/sms/send
-        Params: api_key, to, msg, from (sender name)
-    
+        Params: api_key, to, msg, json
+
     Usage:
         success, message = send_sms("+79991234567", "1234")
         if success:
             print("SMS sent successfully")
     """
-    # Check if API key is configured
-    if not settings.SMS_API_KEY:
-        # Stub mode: log to console (for development)
+    # Test mode: return stub without sending
+    if settings.SMS_TEST_MODE:
+        logger.info(f"[SMS TEST] Code {code} to {phone}")
         print(f"[SMS STUB] Code {code} sent to {phone}")
-        return True, "SMS sent (stub mode)"
-    
-    # TODO: Implement actual SMS.ru API integration
-    # Example implementation:
-    #
-    # import requests
-    #
-    # url = "https://sms.ru/sms/send"
-    # params = {
-    #     "api_key": settings.SMS_API_KEY,
-    #     "to": phone,
-    #     "msg": f"Your verification code: {code}",
-    #     "from": settings.SMS_SENDER_NAME,
-    #     "json": 1
-    # }
-    #
-    # try:
-    #     response = requests.get(url, params=params, timeout=10)
-    #     response.raise_for_status()
-    #     data = response.json()
-    #
-    #     if data.get("status") == "OK":
-    #         return True, "SMS sent"
-    #     else:
-    #         error_msg = data.get("status_message", "Unknown error")
-    #         return False, f"SMS.ru error: {error_msg}"
-    #
-    # except requests.exceptions.RequestException as e:
-    #     return False, f"Network error: {str(e)}"
-    
-    # For now, return success (stub mode)
-    print(f"[SMS] Sending code {code} to {phone}")
-    return True, "SMS sent"
+        return True, "SMS sent (test mode)"
 
+    # Production mode: send via SMS.ru API
+    url = "https://sms.ru/sms/send"
+    params = {
+        "api_key": settings.SMS_API_KEY,
+        "to": phone,
+        "msg": f"Ваш код верификации: {code}",
+        "json": 1
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("status") == "OK":
+            logger.info(f"[SMS] Sent to {phone}, code: {code}")
+            return True, "SMS sent"
+        else:
+            error_msg = data.get("status_message", "Unknown error")
+            logger.error(f"[SMS] SMS.ru error for {phone}: {error_msg}")
+            return False, f"SMS.ru error: {error_msg}"
+
+    except requests.exceptions.Timeout:
+        error_msg = "Request timeout"
+        logger.error(f"[SMS] Timeout for {phone}: {error_msg}")
+        return False, f"Network error: {error_msg}"
+
+    except requests.exceptions.ConnectionError as e:
+        error_msg = "Connection error"
+        logger.error(f"[SMS] Connection error for {phone}: {str(e)}")
+        return False, f"Network error: {error_msg}"
+
+    except requests.exceptions.RequestException as e:
+        error_msg = str(e)
+        logger.error(f"[SMS] Request error for {phone}: {error_msg}")
+        return False, f"Network error: {error_msg}"
+
+    except ValueError as e:
+        error_msg = "JSON parse error"
+        logger.error(f"[SMS] JSON parse error for {phone}: {str(e)}")
+        return False, f"Response error: {error_msg}"
 
 def verify_sms_code(
     db: Session,
