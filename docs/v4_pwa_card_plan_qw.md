@@ -148,18 +148,18 @@
 
 ## Чеклист реализации
 
-- [ ] **1.1:** Добавить `SMS_TEST_MODE=True` в `.env`
-- [ ] **1.2:** Добавить `SMS_TEST_MODE=True` в `.env.example`
-- [ ] **1.3:** Добавить `SMS_TEST_MODE: bool = True` в `config.py`
-- [ ] **2.1:** Добавить импорты (`requests`, `logging`) в `sms_service.py`
-- [ ] **2.2:** Удалить `TEST_MODE`, использовать `settings.SMS_TEST_MODE`
-- [ ] **2.3:** Обновить `generate_sms_code()` для использования `SMS_TEST_MODE`
-- [ ] **2.4:** Реализовать `send_sms()` с интеграцией SMS.ru API
-- [ ] **2.5:** Добавить логирование в `send_sms()`
-- [ ] **3.1:** Протестировать в режиме `SMS_TEST_MODE=True`
-- [ ] **3.2:** Протестировать в режиме `SMS_TEST_MODE=False` (локально)
-- [ ] **3.3:** Протестировать обработку ошибок
-- [ ] **3.4:** Протестировать на сервере
+- [x] **1.1:** Добавить `SMS_TEST_MODE=True` в `.env`
+- [x] **1.2:** Добавить `SMS_TEST_MODE=True` в `.env.example`
+- [x] **1.3:** Добавить `SMS_TEST_MODE: bool = True` в `config.py`
+- [x] **2.1:** Добавить импорты (`requests`, `logging`) в `sms_service.py`
+- [x] **2.2:** Удалить `TEST_MODE`, использовать `settings.SMS_TEST_MODE`
+- [x] **2.3:** Обновить `generate_sms_code()` для использования `SMS_TEST_MODE`
+- [x] **2.4:** Реализовать `send_sms()` с интеграцией SMS.ru API
+- [x] **2.5:** Добавить логирование в `send_sms()`
+- [x] **3.1:** Протестировать в режиме `SMS_TEST_MODE=True`
+- [x] **3.2:** Протестировать в режиме `SMS_TEST_MODE=False` (локально)
+- [x] **3.3:** Протестировать обработку ошибок
+- [-] **3.4:** Протестировать на сервере
 
 ---
 
