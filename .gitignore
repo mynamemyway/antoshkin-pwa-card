@@ -8,6 +8,7 @@ __pycache__/
 .eggs/
 
 # Virtual environments
+.env.production
 .env
 .venv
 venv/
