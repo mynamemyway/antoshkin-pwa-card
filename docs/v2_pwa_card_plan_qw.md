@@ -7,25 +7,6 @@
 **Путь к проекту:** `/home/mynamemyway/projects/antoshkin-pwa-card`
 **Домен:** `card.rassada1.ru` (требуется A-запись)
 
-```
-mynamemyway@samohvalov:~$ sudo ss -tunlp
-[sudo] password for mynamemyway: 
-Netid   State     Recv-Q    Send-Q       Local Address:Port        Peer Address:Port   Process                                                      
-udp     UNCONN    0         0               127.0.0.54:53               0.0.0.0:*       users:(("systemd-resolve",pid=846147,fd=16))                
-udp     UNCONN    0         0            127.0.0.53%lo:53               0.0.0.0:*       users:(("systemd-resolve",pid=846147,fd=14))                
-tcp     LISTEN    0         4096               0.0.0.0:22               0.0.0.0:*       users:(("sshd",pid=846128,fd=3),("systemd",pid=1,fd=191))   
-tcp     LISTEN    0         4096               0.0.0.0:8000             0.0.0.0:*       users:(("docker-proxy",pid=2335,fd=7))                      
-tcp     LISTEN    0         4096               0.0.0.0:8001             0.0.0.0:*       users:(("docker-proxy",pid=530360,fd=7))                    
-tcp     LISTEN    0         4096               0.0.0.0:8484             0.0.0.0:*       users:(("docker-proxy",pid=926018,fd=7))                    
-tcp     LISTEN    0         4096             127.0.0.1:27171            0.0.0.0:*       users:(("containerd",pid=1023631,fd=27))                    
-tcp     LISTEN    0         4096            127.0.0.54:53               0.0.0.0:*       users:(("systemd-resolve",pid=846147,fd=17))                
-tcp     LISTEN    0         4096         127.0.0.53%lo:53               0.0.0.0:*       users:(("systemd-resolve",pid=846147,fd=15))                
-tcp     LISTEN    0         4096                  [::]:22                  [::]:*       users:(("sshd",pid=846128,fd=4),("systemd",pid=1,fd=192))   
-tcp     LISTEN    0         4096                  [::]:8000                [::]:*       users:(("docker-proxy",pid=2342,fd=7))                      
-tcp     LISTEN    0         4096                  [::]:8001                [::]:*       users:(("docker-proxy",pid=530368,fd=7))                    
-tcp     LISTEN    0         4096                  [::]:8484                [::]:*       users:(("docker-proxy",pid=926025,fd=7))  
-```
-
 ---
 
 ## Этап 1: Подготовка (Локально)
