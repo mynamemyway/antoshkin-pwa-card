@@ -158,7 +158,7 @@ cd /home/mynamemyway/projects
 sudo apt update && sudo apt install certbot -y
 ```
 
-### 4.2. **Получение:**
+### 4.2. **Получение:** - НЕ СДЕЛАНО (сделать после А-записи)
 ```bash
 sudo certbot certonly --standalone \
   -d card.rassada1.ru \
@@ -191,7 +191,7 @@ mkdir -p data logs backups
 scp .env.production mynamemyway@91.206.14.93:/home/mynamemyway/projects/antoshkin-pwa-card/.env
 ```
 
-### 5.3. Старт приложения
+### 5.3. Старт приложения - СТОП - НЕ СДЕЛАНО (сделать после А-записи)
 
 ```bash
 cd /home/mynamemyway/projects/antoshkin-pwa-card
