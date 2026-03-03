@@ -90,7 +90,7 @@ def send_sms(phone: str, code: str) -> Tuple[bool, str]:
     # Production mode: send via SMS.ru API
     url = "https://sms.ru/sms/send"
     params = {
-        "api_key": settings.SMS_API_KEY,
+        "api_id": settings.SMS_API_KEY,
         "to": phone,
         "msg": f"Ваш код верификации: {code}",
         "json": 1
