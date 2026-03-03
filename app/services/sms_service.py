@@ -101,12 +101,17 @@ def send_sms(phone: str, code: str) -> Tuple[bool, str]:
         response.raise_for_status()
         data = response.json()
 
+        # Log full API response for debugging
+        logger.debug(f"[SMS] SMS.ru response for {phone}: {data}")
+        print(f"[SMS] SMS.ru response: {data}")
+
         if data.get("status") == "OK":
             logger.info(f"[SMS] Sent to {phone}, code: {code}")
             return True, "SMS sent"
         else:
             error_msg = data.get("status_message", "Unknown error")
-            logger.error(f"[SMS] SMS.ru error for {phone}: {error_msg}")
+            status_code = data.get("status_code", "N/A")
+            logger.error(f"[SMS] SMS.ru error for {phone}: {error_msg} (code: {status_code})")
             return False, f"SMS.ru error: {error_msg}"
 
     except requests.exceptions.Timeout:
