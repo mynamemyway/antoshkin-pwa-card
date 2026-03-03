@@ -31,9 +31,6 @@ class Settings(BaseSettings):
     SMS_SENDER_NAME: str = "Antoshkin"
     SMS_TEST_MODE: bool = True
 
-    # Security
-    SECRET_KEY: str = "change-me-in-production"
-
     # App Settings
     DEBUG: bool = True
 
