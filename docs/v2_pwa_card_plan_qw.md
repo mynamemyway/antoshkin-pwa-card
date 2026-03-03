@@ -268,7 +268,7 @@ crontab -e
 **Добавить строку:**
 
 ```cron
-0 2 * * * /home/mynamemyway/projects/antoshkin-pwa-card/backup-db.sh >> /home/mynamemyway/projects/antoshkin-pwa-card/backups/backup.log 2>&1
+30 03 * * * /bin/bash /home/mynamemyway/projects/antoshkin-pwa-card/backup-db.sh >> /home/mynamemyway/projects/antoshkin-pwa-card/backups/backup.log 2>&1
 ```
 
 ---
