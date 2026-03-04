@@ -193,24 +193,24 @@ sudo certbot renew --dry-run --pre-hook "docker compose -f /home/mynamemyway/pro
 
 ### 6.1. Тестирование
 
-1. [ ] **HTTPS:** Замок в браузере горит зеленым.
-2. [ ] **Redirect:** При вводе `http://` перекидывает на `https://`.
-3. [ ] **PWA:** В меню Chrome (на Android) появился пункт "Установить приложение".
-4. [ ] **SMS:** Код пришел на телефон (не в логах, а в реальности).
-5. [ ] **Reboot:** После `sudo reboot` сервер поднялся сам и сайт работает (проверка `restart: always`).
+1. [x] **HTTPS:** Замок в браузере горит зеленым.
+2. [x] **Redirect:** При вводе `http://` перекидывает на `https://`.
+3. [?] **PWA:** В меню Chrome (на Android) появился пункт "Установить приложение".
+4. [x] **SMS:** Код пришел на телефон (не в логах, а в реальности).
+5. [?] **Reboot:** После `sudo reboot` сервер поднялся сам и сайт работает (проверка `restart: always`).
 
 ### 6.2. Логирование
 
 **Просмотр логов приложения:**
 
 ```bash
-docker compose logs -f app
+docker-compose logs -f app
 ```
 
 **Просмотр логов nginx:**
 
 ```bash
-docker compose logs -f nginx
+docker-compose logs -f nginx
 ```
 
 ### 6.3. Резервное копирование БД
