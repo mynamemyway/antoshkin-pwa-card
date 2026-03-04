@@ -1,6 +1,6 @@
 # Antoshkin Loyalty Card (PWA)
 
-Система цифровых дисконтных карт для цветочного комбината [https://rassada1.ru/](https://card.rassada1.ru).
+Система цифровых дисконтных карт для цветочного комбината [https://card.rassada1.ru/](https://card.rassada1.ru).
 
 ---
 <table>
