@@ -184,7 +184,7 @@ docker-compose up -d --build
 Настрой это одной командой:
 
 ```bash
-sudo certbot renew --dry-run --pre-hook "docker compose -f /home/mynamemyway/projects/antoshkin-pwa-card/docker-compose.yml stop nginx" --post-hook "docker compose -f /home/mynamemyway/projects/antoshkin-pwa-card/docker-compose.yml start nginx"
+sudo certbot renew --dry-run --pre-hook "docker-compose -f /home/mynamemyway/projects/antoshkin-pwa-card/docker-compose.yml stop nginx" --post-hook "docker-compose -f /home/mynamemyway/projects/antoshkin-pwa-card/docker-compose.yml start nginx"
 ```
 
 ---
