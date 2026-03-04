@@ -16,6 +16,8 @@ from app.config import settings
 from app.database import Base, engine
 from app.api.routers import router
 from app.middleware.auth import SessionAuthMiddleware
+import os
+
 
 # Initialize database tables
 # Creates all tables defined in models.py if they don't exist
@@ -36,18 +38,22 @@ app.add_middleware(SessionAuthMiddleware)
 # Configure static files (CSS, JS, images, manifest)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Роуты для фавиконок в корне сайта
+# Получаем путь к папке, где лежит этот файл (main.py)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
-    return FileResponse("favicon.ico")
+    return FileResponse(os.path.join(BASE_DIR, "favicon.ico"))
 
 @app.get("/apple-touch-icon.png", include_in_schema=False)
 async def apple_touch():
-    return FileResponse("apple-touch-icon.png")
+    # Если в корне лежит icon-180.png, укажи его имя. 
+    # Если переименовал в apple-touch-icon.png, оставь так:
+    return FileResponse(os.path.join(BASE_DIR, "apple-touch-icon.png"))
 
 @app.get("/apple-touch-icon-precomposed.png", include_in_schema=False)
 async def apple_touch_precomposed():
-    return FileResponse("apple-touch-icon-precomposed.png")
+    return FileResponse(os.path.join(BASE_DIR, "apple-touch-icon-precomposed.png"))
 
 # Configure Jinja2 templates
 templates = Jinja2Templates(directory="templates")
