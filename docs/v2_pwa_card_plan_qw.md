@@ -313,7 +313,7 @@ docker-compose up -d --build
 
 | Задача | Команда |
 | --- | --- |
-| **Посмотреть логи** | `docker-compose logs -f --tail=50` |
+| **Посмотреть логи** | `docker-compose logs -f app` |
 | **Проверить статус** | `docker-compose ps` |
 | **Обновить код** | `git pull && docker-compose up -d --build` |
 | **Перезапустить всё** | `docker-compose restart` |
