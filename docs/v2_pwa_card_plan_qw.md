@@ -143,7 +143,7 @@ sudo apt update && sudo apt install certbot -y
 ```bash
 sudo certbot certonly --standalone \
   -d card.rassada1.ru \
-  --email твой_email@mail.com \
+  --email samokhvaloff.on@gmail.com \
   --agree-tos --non-interactive
 ```
 
