@@ -10,6 +10,7 @@ and includes API routers.
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import FileResponse  # Добавлено для работы с файлами
 
 from app.config import settings
 from app.database import Base, engine
@@ -34,6 +35,19 @@ app.add_middleware(SessionAuthMiddleware)
 
 # Configure static files (CSS, JS, images, manifest)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Роуты для фавиконок в корне сайта
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse("favicon.ico")
+
+@app.get("/apple-touch-icon.png", include_in_schema=False)
+async def apple_touch():
+    return FileResponse("apple-touch-icon.png")
+
+@app.get("/apple-touch-icon-precomposed.png", include_in_schema=False)
+async def apple_touch_precomposed():
+    return FileResponse("apple-touch-icon-precomposed.png")
 
 # Configure Jinja2 templates
 templates = Jinja2Templates(directory="templates")
