@@ -3,6 +3,23 @@
 Система цифровых дисконтных карт для цветочного комбината [rassada1.ru](https://rassada1.ru/).
 
 ---
+<table>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/cf82507b-5597-443b-a98b-06d9bb502b0f" width="300"></td>
+    <td><img src="https://github.com/user-attachments/assets/921c2a51-2601-490b-bb17-1ff2c2cef7c0" width="300"></td>
+    <td><img src="https://github.com/user-attachments/assets/b18c224c-a2e8-4c2f-96c6-657c08710beb" width="300"></td>
+  </tr>
+</table>
+
+<p align="left">
+  <a href="https://card.rassada1.ru">
+    <img src="https://github.com/user-attachments/assets/a6d4369d-de3a-4e2f-ba24-6d8a952523be" width="150" alt="QR Code" />
+  </a>
+  <br />
+  <a href="https://card.rassada1.ru">card.rassada1.ru</a>
+</p>
+
+---
 
 ## 📱 О проекте
 
