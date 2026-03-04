@@ -55,6 +55,10 @@ async def apple_touch():
 async def apple_touch_precomposed():
     return FileResponse(os.path.join(BASE_DIR, "apple-touch-icon-precomposed.png"))
 
+@app.get("/robots.txt", include_in_schema=False)
+async def robots():
+    return FileResponse(os.path.join(BASE_DIR, "robots.txt"))
+
 # Configure Jinja2 templates
 templates = Jinja2Templates(directory="templates")
 
