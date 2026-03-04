@@ -176,7 +176,7 @@ scp .env.production mynamemyway@91.206.14.93:/home/mynamemyway/projects/antoshki
 
 ```bash
 cd /home/mynamemyway/projects/antoshkin-pwa-card
-docker compose up -d --build
+docker-compose up -d --build
 ```
 
 ### 5.4. Авто-продление SSL (Бессмертный режим)
