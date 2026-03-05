@@ -2,7 +2,7 @@
 
 ## 0. Конфигурация
 
-**Сервер:** `91.206.14.93`
+**Сервер:** `ip`
 **Пользователь:** `mynamemyway`
 **Путь к проекту:** `/home/mynamemyway/projects/antoshkin-pwa-card`
 **Домен:** `card.rassada1.ru` (требуется A-запись)
@@ -20,7 +20,7 @@
 DATABASE_URL=sqlite:///./data/loyalty.db
 
 # SMS Service (SMS.ru)
-SMS_API_KEY=48395181-0488-1E87-4DF1-62242141953E
+SMS_API_KEY=""
 SMS_TEST_MODE=false
 
 # App Settings
