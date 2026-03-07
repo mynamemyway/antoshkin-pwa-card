@@ -15,7 +15,7 @@
             Управление пользователями карты лояльности Антошкин дворик
         </p>
     </div>
-    
+
     <!-- Stats -->
     <div class="sm:mx-auto sm:w-full sm:max-w-4xl mb-8">
         <div class="bg-white rounded-lg shadow p-6">
@@ -33,7 +33,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Actions -->
     <div class="sm:mx-auto sm:w-full sm:max-w-4xl mb-6">
         <div class="flex gap-4">
@@ -54,7 +54,7 @@
             </a>
         </div>
     </div>
-    
+
     <!-- Users Table -->
     <div class="sm:mx-auto sm:w-full sm:max-w-4xl">
         <div class="bg-white shadow rounded-lg overflow-hidden">
@@ -62,16 +62,27 @@
             <div class="px-6 py-4 border-b border-gray-200">
                 <div class="flex items-center justify-between">
                     <h2 class="text-lg font-semibold text-gray-900">
-                        Пользователи (последние {{ users|length }})
+                        Пользователи
+                        <span id="searchResultCount" class="text-gray-500 font-normal">
+                            (последние {{ users|length }})
+                        </span>
                     </h2>
                     <div class="relative">
                         <input
                             type="text"
                             id="searchPhone"
                             placeholder="Поиск по телефону"
+                            value="{{ search }}"
                             class="w-64 px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                            oninput="filterTable(this.value)"
+                            oninput="handleSearchInput(this.value)"
                         >
+                        <!-- Loading Indicator -->
+                        <div id="searchLoading" class="hidden absolute right-3 top-1/2 transform -translate-y-1/2">
+                            <svg class="animate-spin h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -127,7 +138,7 @@
                         {% else %}
                         <tr>
                             <td colspan="5" class="px-6 py-8 text-center text-gray-500">
-                                Пользователей пока нет
+                                Пользователей не найдено
                             </td>
                         </tr>
                         {% endfor %}
@@ -138,34 +149,96 @@
             <!-- Footer -->
             <div class="px-6 py-4 border-t border-gray-200 bg-gray-50">
                 <p class="text-sm text-gray-500">
-                    Показано последних {{ users|length }} пользователей из {{ total }}
+                    <span id="showingText">Показано последних {{ users|length }} пользователей из {{ total }}</span>
                 </p>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Search Script -->
+<!-- Search Script with AJAX and Debounce -->
 <script>
+    // Debounce timer
+    let searchTimeout = null;
+    
+    // Preserve initial search value from server
+    const initialSearch = "{{ search }}";
+    
     /**
-     * Filter users table by phone number.
+     * Handle search input with debounce (300ms delay).
+     * Prevents excessive AJAX requests while typing.
      * @param {string} searchTerm - Phone number or part of it to search for
      */
-    function filterTable(searchTerm) {
-        const table = document.getElementById('usersTable');
-        const rows = table.getElementsByClassName('user-row');
-        const search = searchTerm.trim().toLowerCase();
-
-        for (let i = 0; i < rows.length; i++) {
-            const phoneCell = rows[i].getElementsByTagName('td')[2];
-            if (phoneCell) {
-                const phone = phoneCell.textContent.toLowerCase();
-                if (phone.includes(search)) {
-                    rows[i].style.display = '';
-                } else {
-                    rows[i].style.display = 'none';
-                }
+    function handleSearchInput(searchTerm) {
+        // Clear previous timer
+        if (searchTimeout) {
+            clearTimeout(searchTimeout);
+        }
+        
+        // Set new timer (300ms debounce)
+        searchTimeout = setTimeout(() => {
+            performSearch(searchTerm);
+        }, 300);
+    }
+    
+    /**
+     * Perform AJAX search request to server.
+     * Fetches filtered user list from entire database.
+     * @param {string} searchTerm - Phone number to search for
+     */
+    async function performSearch(searchTerm) {
+        const loadingIndicator = document.getElementById('searchLoading');
+        const searchResultCount = document.getElementById('searchResultCount');
+        const showingText = document.getElementById('showingText');
+        
+        // Show loading indicator
+        loadingIndicator.classList.remove('hidden');
+        
+        try {
+            // Build URL with search parameter
+            const url = searchTerm.trim() 
+                ? `/admin?search=${encodeURIComponent(searchTerm.trim())}`
+                : '/admin';
+            
+            // Fetch filtered results from server
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                throw new Error('Ошибка поиска');
             }
+            
+            // Get HTML response
+            const html = await response.text();
+            
+            // Parse HTML to extract users table
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            
+            // Extract new table body
+            const newTableBody = doc.querySelector('#usersTable');
+            const newSearchResultCount = doc.querySelector('#searchResultCount');
+            const newShowingText = doc.querySelector('#showingText');
+            
+            // Update table if found
+            if (newTableBody) {
+                document.getElementById('usersTable').innerHTML = newTableBody.innerHTML;
+            }
+            
+            // Update result count if found
+            if (newSearchResultCount) {
+                document.getElementById('searchResultCount').innerHTML = newSearchResultCount.innerHTML;
+            }
+            
+            // Update showing text if found
+            if (newShowingText) {
+                document.getElementById('showingText').textContent = newShowingText.textContent;
+            }
+            
+        } catch (error) {
+            console.error('Search failed:', error);
+        } finally {
+            // Hide loading indicator
+            loadingIndicator.classList.add('hidden');
         }
     }
 </script>
