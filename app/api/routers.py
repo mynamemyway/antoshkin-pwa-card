@@ -99,23 +99,45 @@ async def verify_page(request: Request):
 
 
 @router.get("/admin", response_class=HTMLResponse)
-async def admin_panel(request: Request, db: Session = Depends(get_db)):
+async def admin_panel(
+    request: Request,
+    db: Session = Depends(get_db),
+    search: Optional[str] = None
+):
     """
     Admin panel - displays list of all users.
 
     Args:
         request: FastAPI request object
         db: Database session
+        search: Optional phone number search query (filters entire database)
 
     Returns:
         Rendered admin panel HTML template
     """
-    users = db.query(User).order_by(User.created_at.desc()).limit(50).all()
+    # Build base query
+    query = db.query(User)
+    
+    # Apply search filter if provided
+    if search:
+        query = query.filter(User.phone.ilike(f"%{search}%"))
+    
+    # Get users (ordered by created_at desc)
+    users = query.order_by(User.created_at.desc()).limit(50).all()
+    
+    # Get counts
     total = db.query(User).count()
     verified_count = db.query(User).filter(User.is_verified == True).count()
+    
     return request.state.templates.TemplateResponse(
         "admin.html",
-        {"request": request, "users": users, "total": total, "verified_count": verified_count}
+        {
+            "request": request,
+            "users": users,
+            "total": total,
+            "verified_count": verified_count,
+            "search": search or ""
+        }
     )
 
 
