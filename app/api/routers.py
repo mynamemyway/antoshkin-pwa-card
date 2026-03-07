@@ -102,19 +102,26 @@ async def verify_page(request: Request):
 async def admin_panel(
     request: Request,
     db: Session = Depends(get_db),
-    search: Optional[str] = None
+    search: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 50
 ):
     """
-    Admin panel - displays list of all users.
+    Admin panel - displays list of all users with pagination and search.
 
     Args:
         request: FastAPI request object
         db: Database session
         search: Optional phone number search query (filters entire database)
+        page: Page number for pagination (default: 1)
+        per_page: Number of users per page (default: 50)
 
     Returns:
         Rendered admin panel HTML template
     """
+    # Ensure page is at least 1
+    page = max(1, page)
+    
     # Build base query
     query = db.query(User)
     
@@ -122,11 +129,17 @@ async def admin_panel(
     if search:
         query = query.filter(User.phone.ilike(f"%{search}%"))
     
-    # Get users (ordered by created_at desc)
-    users = query.order_by(User.created_at.desc()).limit(50).all()
+    # Get total count (before pagination)
+    total = query.count()
     
-    # Get counts
-    total = db.query(User).count()
+    # Calculate offset and total pages
+    offset = (page - 1) * per_page
+    total_pages = (total + per_page - 1) // per_page if total > 0 else 1
+    
+    # Get users for current page (ordered by created_at desc)
+    users = query.order_by(User.created_at.desc()).offset(offset).limit(per_page).all()
+    
+    # Get verified count (from entire database, not just filtered)
     verified_count = db.query(User).filter(User.is_verified == True).count()
     
     return request.state.templates.TemplateResponse(
@@ -136,7 +149,11 @@ async def admin_panel(
             "users": users,
             "total": total,
             "verified_count": verified_count,
-            "search": search or ""
+            "search": search or "",
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+            "offset": offset
         }
     )
 
