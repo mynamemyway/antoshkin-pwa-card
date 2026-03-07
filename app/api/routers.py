@@ -102,19 +102,20 @@ async def verify_page(request: Request):
 async def admin_panel(request: Request, db: Session = Depends(get_db)):
     """
     Admin panel - displays list of all users.
-    
+
     Args:
         request: FastAPI request object
         db: Database session
-    
+
     Returns:
         Rendered admin panel HTML template
     """
     users = db.query(User).order_by(User.created_at.desc()).limit(50).all()
     total = db.query(User).count()
+    verified_count = db.query(User).filter(User.is_verified == True).count()
     return request.state.templates.TemplateResponse(
         "admin.html",
-        {"request": request, "users": users, "total": total}
+        {"request": request, "users": users, "total": total, "verified_count": verified_count}
     )
 
 
