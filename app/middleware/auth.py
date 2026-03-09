@@ -21,7 +21,7 @@ from fastapi.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.database import AsyncSessionLocal
-from app.services.session_service import get_session_by_token_async
+from app.services.session_service import get_session_by_token
 
 
 class SessionAuthMiddleware(BaseHTTPMiddleware):
@@ -87,7 +87,7 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
         async with AsyncSessionLocal() as db:
             try:
                 # Find session by token (async)
-                session = await get_session_by_token_async(db, token)
+                session = await get_session_by_token(db, token)
 
                 if not session:
                     # Session not found in database - continue as anonymous
