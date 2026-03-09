@@ -9,20 +9,18 @@ Integrates with SMS gateway API (e.g., SMS.ru).
 Functions:
 - generate_sms_code: Create 4-digit verification code
 - send_sms: Send SMS via gateway API (async)
-- verify_sms_code: Validate code and mark user as verified
-
-Testing:
-    For local testing, the code is always "0000" (SMS_TEST_MODE=True).
-    Set SMS_TEST_MODE=False for production with real SMS codes.
+- verify_sms_code: Validate code and mark user as verified (async)
+- set_user_sms_code: Generate and save SMS code (async)
+- resend_sms_code: Resend SMS code (async)
 """
 
 import logging
 import random
 from datetime import datetime, timedelta
-from typing import Tuple
+from typing import Tuple, Optional
 
 import httpx
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import User
@@ -83,7 +81,7 @@ async def send_sms(phone: str, code: str) -> Tuple[bool, str]:
     """
     # Test mode: return stub without sending
     if settings.SMS_TEST_MODE:
-        logger.info(f"[SMS TEST] Code {code} to {phone}")
+        logger.info(f"[SMS] Code {code} to {phone}")
         print(f"[SMS STUB] Code {code} sent to {phone}")
         return True, "SMS sent (test mode)"
 
@@ -131,34 +129,34 @@ async def send_sms(phone: str, code: str) -> Tuple[bool, str]:
         return False, f"Response error: {error_msg}"
 
 
-def verify_sms_code(
-    db: Session,
+async def verify_sms_code(
+    db: AsyncSession,
     user: User,
     code: str
 ) -> Tuple[bool, str]:
     """
-    Verify SMS code and activate user account.
-    
+    Verify SMS code and activate user account (async version).
+
     Args:
-        db: Database session
+        db: AsyncSession database session
         user: User object to verify
         code: 4-digit code entered by user
-    
+
     Returns:
         Tuple of (success: bool, message: str)
         - (True, "Verified") if code is valid
         - (False, "Error message") if invalid or expired
-    
+
     Verification logic:
         1. Check if user is already verified
         2. Check if SMS code exists
         3. Check if code has not expired (5 minutes)
         4. Compare entered code with stored code
         5. If valid: mark as verified, clear code
-    
+
     Usage:
-        user = get_user_by_phone(db, "+79991234567")
-        success, message = verify_sms_code(db, user, "1234")
+        user = await get_user_by_phone(db, "+79991234567")
+        success, message = await verify_sms_code(db, user, "1234")
         if success:
             print("User verified successfully")
     """
@@ -185,77 +183,77 @@ def verify_sms_code(
     user.is_verified = True
     user.sms_code = None
     user.sms_code_expires_at = None
-    db.commit()
+    await db.commit()
 
     return True, "Verified"
 
 
-def set_user_sms_code(
-    db: Session,
+async def set_user_sms_code(
+    db: AsyncSession,
     user: User
 ) -> Tuple[bool, str, str]:
     """
-    Generate and set SMS code for user.
-    
+    Generate and set SMS code for user (async version).
+
     Args:
-        db: Database session
+        db: AsyncSession database session
         user: User object
-    
+
     Returns:
         Tuple of (success: bool, code: str, message: str)
         - Code is returned for sending via SMS
         - Code is NOT stored in plain text in production (use hash)
-    
+
     Note:
         Code expires in 5 minutes.
         For production: hash the code before storing in database.
-    
+
     Usage:
-        user = get_user_by_phone(db, "+79991234567")
-        success, code, message = set_user_sms_code(db, user)
+        user = await get_user_by_phone(db, "+79991234567")
+        success, code, message = await set_user_sms_code(db, user)
         if success:
-            send_sms(user.phone, code)
+            await send_sms(user.phone, code)
     """
     # Generate new code
     code = generate_sms_code()
-    
+
     # Set expiration time (5 minutes from now)
     expires_at = datetime.utcnow() + timedelta(minutes=5)
-    
+
     # Save to database
     user.sms_code = code
     user.sms_code_expires_at = expires_at
-    db.commit()
-    
+    await db.commit()
+
     return True, code, "Code generated"
 
 
-def resend_sms_code(
-    db: Session,
+async def resend_sms_code(
+    db: AsyncSession,
     user: User
 ) -> Tuple[bool, str, str]:
     """
-    Resend SMS code to user (if previous code expired or not received).
-    
+    Resend SMS code to user (if previous code expired or not received) (async version).
+
     Args:
-        db: Database session
+        db: AsyncSession database session
         user: User object
-    
+
     Returns:
         Tuple of (success: bool, code: str, message: str)
-    
+
     Note:
         Generates new code and resets expiration time.
         Implement rate limiting in production (e.g., max 3 requests per hour).
-    
+
     Usage:
-        user = get_user_by_phone(db, "+79991234567")
-        success, code, message = resend_sms_code(db, user)
-        send_sms(user.phone, code)
+        user = await get_user_by_phone(db, "+79991234567")
+        success, code, message = await resend_sms_code(db, user)
+        await send_sms(user.phone, code)
     """
     # Check if already verified
     if user.is_verified:
         return False, "", "User already verified"
-    
+
     # Generate and set new code
-    return set_user_sms_code(db, user)
+    return await set_user_sms_code(db, user)
