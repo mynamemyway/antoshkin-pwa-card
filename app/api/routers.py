@@ -349,17 +349,20 @@ async def verify_code(
     if user.sms_code != verify_data.code:
         raise HTTPException(status_code=400, detail="Неверный код")
 
+    # Save user_id BEFORE commit (user becomes expired after commit in async)
+    user_id = user.id
+
     # Code is valid - mark as verified if not already
     if not user.is_verified:
         user.is_verified = True
-    
+
     # Clear SMS code after successful verification
     user.sms_code = None
     user.sms_code_expires_at = None
     await db.commit()
 
     # Create session and set cookie
-    token = await create_session(db, user.id)
+    token = await create_session(db, user_id)
 
     # Set HttpOnly cookie
     response.set_cookie(
