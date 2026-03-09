@@ -17,9 +17,10 @@ from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
-from app.database import get_db
+from app.database import get_db, get_async_db
 from app.models import User, Session
 from app.schemas import (
     UserCreate,
@@ -42,8 +43,10 @@ from app.services.sms_service import (
 )
 from app.services.session_service import (
     create_session,
+    create_session_async,
     get_session_by_token,
     delete_session,
+    delete_session_async,
 )
 
 # Create router instance
@@ -101,7 +104,7 @@ async def verify_page(request: Request):
 @router.get("/admin", response_class=HTMLResponse)
 async def admin_panel(
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     search: Optional[str] = None,
     page: int = 1,
     per_page: int = 50
@@ -111,7 +114,7 @@ async def admin_panel(
 
     Args:
         request: FastAPI request object
-        db: Database session
+        db: AsyncSession database session
         search: Optional phone number search query (filters entire database)
         page: Page number for pagination (default: 1)
         per_page: Number of users per page (default: 50)
@@ -159,13 +162,13 @@ async def admin_panel(
 
 
 @router.get("/admin/export")
-async def export_users(request: Request, db: Session = Depends(get_db)):
+async def export_users(request: Request, db: AsyncSession = Depends(get_async_db)):
     """
     Export all users to CSV file.
     
     Args:
         request: FastAPI request object
-        db: Database session
+        db: AsyncSession database session
     
     Returns:
         CSV file with user data for download
@@ -201,19 +204,19 @@ async def export_users(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/card/{phone}", response_class=HTMLResponse)
-async def card_page(request: Request, phone: str, db: Session = Depends(get_db)):
+async def card_page(request: Request, phone: str, db: AsyncSession = Depends(get_async_db)):
     """
     Display user's loyalty card with QR code.
     
     Args:
         request: FastAPI request object
         phone: Normalized phone number
-        db: Database session
+        db: AsyncSession database session
     
     Returns:
         Rendered card HTML template (only for verified users)
     """
-    user = get_user_by_phone(db, phone)
+    user = await get_user_by_phone(db, phone)
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -234,64 +237,75 @@ async def card_page(request: Request, phone: str, db: Session = Depends(get_db))
 # ============== API Routes (POST) ==============
 
 @router.post("/api/register", response_model=UserOut)
-async def register(user_data: UserCreate, db: Session = Depends(get_db)):
+async def register(user_data: UserCreate, db: AsyncSession = Depends(get_async_db)):
     """
     Register new user or return existing user data.
-    
+
     Args:
         user_data: User registration data (full_name, phone)
-        db: Database session
-    
+        db: AsyncSession database session
+
     Returns:
         User data (existing or newly created)
-    
+
     Raises:
         HTTPException: If phone number format is invalid
     """
     # Check if user already exists
-    existing_user = get_user_by_phone(db, user_data.phone)
-    
+    existing_user = await get_user_by_phone(db, user_data.phone)
+
     if existing_user:
         # Return existing user data
         return existing_user
-    
-    # Create new user
-    new_user = create_user(db, user_data.full_name, user_data.phone)
-    return new_user
+
+    # Create new user with race condition handling
+    try:
+        new_user = await create_user(db, user_data.full_name, user_data.phone)
+        return new_user
+    except IntegrityError:
+        # Race condition: another request created the user
+        await db.rollback()
+        # Fetch and return the existing user
+        existing_user = await get_user_by_phone(db, user_data.phone)
+        if existing_user:
+            return existing_user
+        # Should not happen, but raise if user still not found
+        raise HTTPException(status_code=500, detail="Failed to create user")
 
 
 @router.post("/api/send-sms", response_model=SMSResponse)
-async def send_sms_code(sms_data: SMSRequest, db: Session = Depends(get_db)):
+async def send_sms_endpoint(sms_data: SMSRequest, db: AsyncSession = Depends(get_async_db)):
     """
     Send SMS verification code to user.
 
     Args:
         sms_data: Phone number for SMS delivery
-        db: Database session
+        db: AsyncSession database session
 
     Returns:
         {"sent": true} if SMS was sent successfully
 
     Raises:
-        HTTPException: If user not found
+        HTTPException: If user not found or SMS failed
     """
-    user = get_user_by_phone(db, sms_data.phone)
+    user = await get_user_by_phone(db, sms_data.phone)
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Generate and save code (for ALL users, including verified)
-    # Verified users need SMS code for re-login after logout
+    # Generate code
     code = generate_sms_code()
-    user.sms_code = code
-    user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
-    db.commit()
 
-    # Send SMS
-    sms_sent, message = send_sms(user.phone, code)
+    # Send SMS FIRST (atomic: don't save code if SMS fails)
+    sms_sent, message = await send_sms(user.phone, code)
 
     if not sms_sent:
         raise HTTPException(status_code=500, detail="Failed to send SMS")
+
+    # SMS sent successfully - save code to database
+    user.sms_code = code
+    user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+    await db.commit()
 
     return SMSResponse(sent=True)
 
@@ -299,7 +313,7 @@ async def send_sms_code(sms_data: SMSRequest, db: Session = Depends(get_db)):
 @router.post("/api/verify", response_model=VerifyResponse)
 async def verify_code(
     verify_data: UserVerify,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     response: Response = None
 ):
     """
@@ -307,7 +321,7 @@ async def verify_code(
 
     Args:
         verify_data: Phone number and verification code
-        db: Database session
+        db: AsyncSession database session
         response: FastAPI response object (for setting cookie)
 
     Returns:
@@ -320,7 +334,7 @@ async def verify_code(
         All users must enter SMS code for verification, including previously verified users.
         This ensures security when logging in after logout.
     """
-    user = get_user_by_phone(db, verify_data.phone)
+    user = await get_user_by_phone(db, verify_data.phone)
 
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -344,7 +358,7 @@ async def verify_code(
     # Clear SMS code after successful verification
     user.sms_code = None
     user.sms_code_expires_at = None
-    db.commit()
+    await db.commit()
 
     # Create session and set cookie
     token = create_session(db, user.id)
@@ -367,7 +381,7 @@ async def verify_code(
 @router.post("/api/login")
 async def login(
     sms_data: SMSRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     response: Response = None
 ):
     """
@@ -380,7 +394,7 @@ async def login(
     
     Args:
         sms_data: Phone number for login
-        db: Database session
+        db: AsyncSession database session
         response: FastAPI response object
     
     Returns:
@@ -404,7 +418,7 @@ async def login(
         }
     """
     # Find user by phone
-    user = get_user_by_phone(db, sms_data.phone)
+    user = await get_user_by_phone(db, sms_data.phone)
     
     if not user:
         # User not found - frontend should trigger registration
@@ -413,17 +427,19 @@ async def login(
     # User exists - send SMS code (for both verified and not verified)
     # This handles Scenario 3 (verified, no cookie) and Scenario 4 (not verified)
 
-    # Generate and save code
+    # Generate code
     code = generate_sms_code()
-    user.sms_code = code
-    user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
-    db.commit()
 
-    # Send SMS
-    sms_sent, message = send_sms(user.phone, code)
+    # Send SMS FIRST (atomic: don't save code if SMS fails)
+    sms_sent, message = await send_sms(user.phone, code)
 
     if not sms_sent:
         raise HTTPException(status_code=500, detail="Failed to send SMS")
+
+    # SMS sent successfully - save code to database
+    user.sms_code = code
+    user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+    await db.commit()
 
     return SMSResponse(sent=True)
 
@@ -431,7 +447,7 @@ async def login(
 @router.post("/api/logout")
 async def logout(
     request: Request,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Logout user (delete session).
@@ -443,7 +459,7 @@ async def logout(
     
     Args:
         request: FastAPI request object (for cookie access)
-        db: Database session
+        db: AsyncSession database session
     
     Returns:
         {"success": true} if logged out successfully
@@ -453,7 +469,7 @@ async def logout(
     
     if token:
         # Delete session from database
-        delete_session(db, token)
+        await delete_session(db, token)
     
     # Create response with cookie cleared
     response = Response(content='{"success": true}')
@@ -471,7 +487,7 @@ async def logout(
 @router.get("/api/me", response_model=UserOut)
 async def get_current_user(
     request: Request,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Get current authenticated user.
@@ -482,7 +498,7 @@ async def get_current_user(
     
     Args:
         request: FastAPI request object (for cookie access)
-        db: Database session
+        db: AsyncSession database session
     
     Returns:
         User data if authenticated
