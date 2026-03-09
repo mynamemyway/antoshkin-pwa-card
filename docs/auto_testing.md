@@ -477,5 +477,6 @@ jobs:
       - name: Upload coverage
         uses: codecov/codecov-action@v2
 ```
-35 failed, 77 passed, 825 warnings
+
+33 failed, 92 passed in 13.38s
 python -m pytest
