@@ -13,12 +13,13 @@ from app.models import User
 class TestApiVerify:
     """Tests for POST /api/verify endpoint."""
 
-    def test_verify_code_success(self, client, test_user_unverified, mock_sms_code, db):
+    @pytest.mark.asyncio
+    async def test_verify_code_success(self, client, test_user_unverified, mock_sms_code, db):
         """B.3.1: Успешная верификация."""
         # Set SMS code
         test_user_unverified.sms_code = "1234"
         test_user_unverified.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
-        db.commit()
+        await db.commit()
 
         response = client.post("/api/verify", json={
             "phone": test_user_unverified.phone,
@@ -32,11 +33,12 @@ class TestApiVerify:
         # Check cookie is set
         assert "session_token" in response.cookies
 
-    def test_verify_code_invalid(self, client, test_user_unverified, db):
+    @pytest.mark.asyncio
+    async def test_verify_code_invalid(self, client, test_user_unverified, db):
         """B.3.2: Неверный код."""
         test_user_unverified.sms_code = "1234"
         test_user_unverified.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
-        db.commit()
+        await db.commit()
 
         response = client.post("/api/verify", json={
             "phone": test_user_unverified.phone,
@@ -45,11 +47,12 @@ class TestApiVerify:
 
         assert response.status_code == 400
 
-    def test_verify_code_expired(self, client, test_user_unverified, db):
+    @pytest.mark.asyncio
+    async def test_verify_code_expired(self, client, test_user_unverified, db):
         """B.3.3: Просроченный код."""
         test_user_unverified.sms_code = "1234"
         test_user_unverified.sms_code_expires_at = datetime.utcnow() - timedelta(minutes=1)
-        db.commit()
+        await db.commit()
 
         response = client.post("/api/verify", json={
             "phone": test_user_unverified.phone,
@@ -67,10 +70,11 @@ class TestApiVerify:
 
         assert response.status_code == 404
 
-    def test_verify_code_no_code_sent(self, client, test_user_unverified, db):
+    @pytest.mark.asyncio
+    async def test_verify_code_no_code_sent(self, client, test_user_unverified, db):
         """B.3.5: Верификация без отправки кода."""
         # Don't set sms_code
-        db.commit()
+        await db.commit()
 
         response = client.post("/api/verify", json={
             "phone": test_user_unverified.phone,
@@ -79,11 +83,12 @@ class TestApiVerify:
 
         assert response.status_code == 400
 
-    def test_verify_code_sets_cookie(self, client, test_user_unverified, mock_sms_code, db):
+    @pytest.mark.asyncio
+    async def test_verify_code_sets_cookie(self, client, test_user_unverified, mock_sms_code, db):
         """B.3.6: Проверка установки cookie."""
         test_user_unverified.sms_code = "1234"
         test_user_unverified.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
-        db.commit()
+        await db.commit()
 
         response = client.post("/api/verify", json={
             "phone": test_user_unverified.phone,
@@ -101,7 +106,7 @@ class TestApiVerify:
         """B.3.7: Проверка статуса верификации."""
         test_user_unverified.sms_code = "1234"
         test_user_unverified.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
-        db.commit()
+        await db.commit()
 
         response = client.post("/api/verify", json={
             "phone": test_user_unverified.phone,
@@ -120,7 +125,7 @@ class TestApiVerify:
         """B.3.8: Проверка очистки кода после верификации."""
         test_user_unverified.sms_code = "1234"
         test_user_unverified.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
-        db.commit()
+        await db.commit()
 
         response = client.post("/api/verify", json={
             "phone": test_user_unverified.phone,
@@ -135,12 +140,13 @@ class TestApiVerify:
         assert db_user.sms_code is None
         assert db_user.sms_code_expires_at is None
 
-    def test_verify_already_verified_user(self, client, test_user, mock_sms_code, db):
+    @pytest.mark.asyncio
+    async def test_verify_already_verified_user(self, client, test_user, mock_sms_code, db):
         """B.3.9: Верификация верифицированного пользователя."""
         # Set SMS code for verified user (for re-login)
         test_user.sms_code = "1234"
         test_user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
-        db.commit()
+        await db.commit()
 
         response = client.post("/api/verify", json={
             "phone": test_user.phone,
