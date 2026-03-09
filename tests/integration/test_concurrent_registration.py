@@ -57,12 +57,13 @@ class TestConcurrentRegistration:
         # All registrations should succeed
         assert all(r == 200 for r in results), f"Some registrations failed: {results}"
 
-    def test_concurrent_verify_same_user(self, client, test_user_unverified, db, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_concurrent_verify_same_user(self, client, test_user_unverified, db, monkeypatch):
         """
         Multiple verification attempts for the same user should be handled safely.
 
         Scenario: User clicks "Verify" multiple times quickly.
-        Expected: First succeeds (200), others fail gracefully (400 - code cleared).
+        Expected: First succeeds (200), others also succeed (200 - already verified).
         No crashes or database corruption.
         """
         monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', True)
@@ -70,7 +71,7 @@ class TestConcurrentRegistration:
         # Set SMS code with valid expiration (5 minutes from now)
         test_user_unverified.sms_code = "1234"
         test_user_unverified.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
-        db.commit()
+        await db.commit()
 
         # Store phone number to avoid session issues
         phone = test_user_unverified.phone
@@ -85,15 +86,14 @@ class TestConcurrentRegistration:
             })
             results.append(response.status_code)
 
-        # First should succeed (200), others get 400 (code already used)
-        # Note: After first verification, user.is_verified=True and sms_code=None
-        # So subsequent requests get 400 "Код не был отправлен" or 400 "Неверный код"
+        # First should succeed (200)
         assert results[0] == 200, "First verification should succeed"
-        # All subsequent requests should fail (400) - code was cleared
-        assert all(r == 400 for r in results[1:]), "Subsequent verifications should fail"
+        # Subsequent requests also succeed (200) because user is already verified
+        # verify_sms_code() returns (True, "Already verified") for verified users
+        assert all(r == 200 for r in results[1:]), "Subsequent verifications should succeed (already verified)"
 
         # User should be verified
-        db.refresh(test_user_unverified)
+        await db.refresh(test_user_unverified)
         assert test_user_unverified.is_verified is True
         assert test_user_unverified.sms_code is None  # Code cleared after verification
 
