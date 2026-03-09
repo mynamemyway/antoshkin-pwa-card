@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import FileResponse  # Добавлено для работы с файлами
 
 from app.config import settings
-from app.database import Base, engine
+from app.database import Base, sync_engine
 from app.api.routers import router
 from app.middleware.auth import SessionAuthMiddleware
 import os
@@ -21,7 +21,7 @@ import os
 
 # Initialize database tables
 # Creates all tables defined in models.py if they don't exist
-Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=sync_engine)
 
 # Initialize FastAPI application
 app = FastAPI(
