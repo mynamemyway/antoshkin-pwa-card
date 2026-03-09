@@ -114,65 +114,72 @@ class TestSendSms:
 class TestVerifySmsCode:
     """Tests for verify_sms_code() function."""
 
-    def test_verify_sms_code_valid(self, db, test_user_unverified):
+    @pytest.mark.asyncio
+    async def test_verify_sms_code_valid(self, db, test_user_unverified):
         """A.2.4: Верификация верным кодом."""
         # Set SMS code
         expires_at = datetime.utcnow() + timedelta(minutes=5)
         test_user_unverified.sms_code = "1234"
         test_user_unverified.sms_code_expires_at = expires_at
-        db.commit()
+        await db.commit()
         
-        success, message = verify_sms_code(db, test_user_unverified, "1234")
+        success, message = await verify_sms_code(db, test_user_unverified, "1234")
         assert success is True
         assert test_user_unverified.is_verified is True
 
-    def test_verify_sms_code_invalid(self, db, test_user_unverified):
+    @pytest.mark.asyncio
+    async def test_verify_sms_code_invalid(self, db, test_user_unverified):
         """A.2.5: Верификация неверным кодом."""
         expires_at = datetime.utcnow() + timedelta(minutes=5)
         test_user_unverified.sms_code = "1234"
         test_user_unverified.sms_code_expires_at = expires_at
-        db.commit()
+        await db.commit()
         
-        success, message = verify_sms_code(db, test_user_unverified, "9999")
+        success, message = await verify_sms_code(db, test_user_unverified, "9999")
         assert success is False
 
-    def test_verify_sms_code_expired(self, db, test_user_unverified):
+    @pytest.mark.asyncio
+    async def test_verify_sms_code_expired(self, db, test_user_unverified):
         """A.2.6: Верификация просроченным кодом."""
         expires_at = datetime.utcnow() - timedelta(minutes=5)  # Expired
         test_user_unverified.sms_code = "1234"
         test_user_unverified.sms_code_expires_at = expires_at
-        db.commit()
+        await db.commit()
         
-        success, message = verify_sms_code(db, test_user_unverified, "1234")
+        success, message = await verify_sms_code(db, test_user_unverified, "1234")
         assert success is False
 
-    def test_verify_sms_code_already_verified(self, db, test_user):
+    @pytest.mark.asyncio
+    async def test_verify_sms_code_already_verified(self, db, test_user):
         """Верификация уже верифицированного пользователя."""
         test_user.is_verified = True
         test_user.sms_code = None
         test_user.sms_code_expires_at = None
-        db.commit()
+        await db.commit()
         
-        success, message = verify_sms_code(db, test_user, "1234")
-        assert success is True  # Returns True for already verified
+        # Already verified users return success=True with "Already verified" message
+        success, message = await verify_sms_code(db, test_user, "1234")
+        assert success is True
         assert "Already verified" in message
 
-    def test_verify_sms_code_no_code(self, db, test_user_unverified):
+    @pytest.mark.asyncio
+    async def test_verify_sms_code_no_code(self, db, test_user_unverified):
         """Верификация без установленного кода."""
         test_user_unverified.sms_code = None
         test_user_unverified.sms_code_expires_at = None
-        db.commit()
+        await db.commit()
         
-        success, message = verify_sms_code(db, test_user_unverified, "1234")
+        success, message = await verify_sms_code(db, test_user_unverified, "1234")
         assert success is False
 
 
 class TestSetUserSmsCode:
     """Tests for set_user_sms_code() function."""
 
-    def test_set_user_sms_code(self, db, test_user_unverified):
+    @pytest.mark.asyncio
+    async def test_set_user_sms_code(self, db, test_user_unverified):
         """A.2.7: Установка SMS кода."""
-        success, code, message = set_user_sms_code(db, test_user_unverified)
+        success, code, message = await set_user_sms_code(db, test_user_unverified)
         
         assert success is True
         assert code is not None
@@ -184,19 +191,21 @@ class TestSetUserSmsCode:
 class TestResendSmsCode:
     """Tests for resend_sms_code() function."""
 
-    def test_resend_sms_code(self, db, test_user_unverified):
+    @pytest.mark.asyncio
+    async def test_resend_sms_code(self, db, test_user_unverified):
         """A.2.8: Повторная отправка SMS."""
         # First send
-        success1, code1, message1 = resend_sms_code(db, test_user_unverified)
+        success1, code1, message1 = await resend_sms_code(db, test_user_unverified)
         assert success1 is True
         
         # Second send (should also succeed)
-        success2, code2, message2 = resend_sms_code(db, test_user_unverified)
+        success2, code2, message2 = await resend_sms_code(db, test_user_unverified)
         assert success2 is True
 
-    def test_resend_sms_code_verified(self, db, test_user):
+    @pytest.mark.asyncio
+    async def test_resend_sms_code_verified(self, db, test_user):
         """Повторная отправка верифицированному пользователю."""
         # test_user is verified by fixture
-        success, code, message = resend_sms_code(db, test_user)
+        success, code, message = await resend_sms_code(db, test_user)
         assert success is False
         assert "already verified" in message.lower()
