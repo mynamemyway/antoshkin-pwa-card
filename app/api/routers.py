@@ -264,14 +264,14 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 async def send_sms_code(sms_data: SMSRequest, db: Session = Depends(get_db)):
     """
     Send SMS verification code to user.
-    
+
     Args:
         sms_data: Phone number for SMS delivery
         db: Database session
-    
+
     Returns:
         {"sent": true} if SMS was sent successfully
-    
+
     Raises:
         HTTPException: If user not found
     """
@@ -288,7 +288,7 @@ async def send_sms_code(sms_data: SMSRequest, db: Session = Depends(get_db)):
     db.commit()
 
     # Send SMS
-    sms_sent = send_sms(user.phone, code)
+    sms_sent, message = send_sms(user.phone, code)
 
     if not sms_sent:
         raise HTTPException(status_code=500, detail="Failed to send SMS")
@@ -409,22 +409,22 @@ async def login(
     if not user:
         # User not found - frontend should trigger registration
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     # User exists - send SMS code (for both verified and not verified)
     # This handles Scenario 3 (verified, no cookie) and Scenario 4 (not verified)
-    
+
     # Generate and save code
     code = generate_sms_code()
     user.sms_code = code
     user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
     db.commit()
-    
+
     # Send SMS
-    sms_sent = send_sms(user.phone, code)
-    
+    sms_sent, message = send_sms(user.phone, code)
+
     if not sms_sent:
         raise HTTPException(status_code=500, detail="Failed to send SMS")
-    
+
     return SMSResponse(sent=True)
 
 
