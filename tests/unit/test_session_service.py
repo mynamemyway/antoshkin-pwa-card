@@ -6,6 +6,7 @@ Tests session creation, retrieval, deletion, and cleanup functions.
 
 import pytest
 from datetime import datetime, timedelta
+from sqlalchemy import select, func
 from app.services.session_service import (
     create_session,
     get_session_by_token,
@@ -28,7 +29,8 @@ class TestCreateSession:
         assert len(token) > 0
 
         # Verify session in database
-        session = db.query(Session).filter(Session.token == token).first()
+        result = await db.execute(select(Session).where(Session.token == token))
+        session = result.scalar_one_or_none()
         assert session is not None
         assert session.user_id == test_user.id
         assert session.token == token
@@ -41,7 +43,8 @@ class TestCreateSession:
         """A.3.2: Создание сессии с кастомным сроком."""
         token = await create_session(db, test_user.id, expires_in_days=7)
 
-        session = db.query(Session).filter(Session.token == token).first()
+        result = await db.execute(select(Session).where(Session.token == token))
+        session = result.scalar_one_or_none()
         assert session is not None
         # Check expiration is ~7 days from now
         expected_expires = datetime.utcnow() + timedelta(days=7)
@@ -55,7 +58,8 @@ class TestCreateSession:
 
         assert token1 != token2
 
-        sessions = db.query(Session).filter(Session.user_id == test_user.id).all()
+        result = await db.execute(select(Session).where(Session.user_id == test_user.id))
+        sessions = result.scalars().all()
         assert len(sessions) == 2
 
 
@@ -99,7 +103,8 @@ class TestDeleteSession:
         assert result is True
 
         # Verify session is deleted
-        session = db.query(Session).filter(Session.token == test_session.token).first()
+        result = await db.execute(select(Session).where(Session.token == test_session.token))
+        session = result.scalar_one_or_none()
         assert session is None
 
     @pytest.mark.asyncio
@@ -136,7 +141,8 @@ class TestCleanupExpiredSessions:
         assert deleted_count >= 1
 
         # Verify only valid sessions remain
-        sessions = db.query(Session).all()
+        result = await db.execute(select(Session))
+        sessions = result.scalars().all()
         for session in sessions:
             assert session.is_valid() is True
 
@@ -167,7 +173,8 @@ class TestDeleteAllUserSessions:
         assert deleted_count == 3
 
         # Verify no sessions remain
-        sessions = db.query(Session).filter(Session.user_id == test_user.id).all()
+        result = await db.execute(select(Session).where(Session.user_id == test_user.id))
+        sessions = result.scalars().all()
         assert len(sessions) == 0
 
     @pytest.mark.asyncio
