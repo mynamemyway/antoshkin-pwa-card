@@ -20,7 +20,7 @@ from app.services.crud import (
     clear_sms_code,
     verify_user
 )
-from app.models import User
+from app.models import User, Session
 
 
 class TestGetUserByPhone:
@@ -113,7 +113,8 @@ class TestGetAllUsers:
     @pytest.mark.asyncio
     async def test_get_all_users(self, db, many_users):
         """A.4.9: Получение всех пользователей."""
-        users = await get_all_users(db)
+        # get_all_users has default limit=50, need to specify limit=100
+        users = await get_all_users(db, limit=100)
 
         assert len(users) == 100
 
@@ -123,7 +124,10 @@ class TestGetAllUsers:
         users = await get_all_users(db, offset=50, limit=25)
 
         assert len(users) == 25
-        assert users[0].full_name == "User 51"
+        # Users are ordered by created_at desc (newest first)
+        # User 100 was created last (newest), User 1 was created first (oldest)
+        # So offset=50, limit=25 should return users 50-26 (in reverse order)
+        assert users[0].full_name == "User 50"
 
     @pytest.mark.asyncio
     async def test_get_all_users_empty(self, db):
@@ -157,7 +161,7 @@ class TestDeleteUser:
     @pytest.mark.asyncio
     async def test_delete_user(self, db, test_user):
         """A.4.11: Удаление пользователя."""
-        result = await delete_user(db, test_user.id)
+        result = await delete_user(db, test_user)
 
         assert result is True
 
@@ -169,11 +173,18 @@ class TestDeleteUser:
     @pytest.mark.asyncio
     async def test_delete_user_cascades_sessions(self, db, test_user, test_session):
         """Каскадное удаление сессий."""
-        # Verify session exists
-        result = await db.execute(select(func.count()).select_from(func.count()).where())
+        # Verify session exists before delete
+        result = await db.execute(select(func.count()).select_from(Session))
+        session_count_before = result.scalar()
+        assert session_count_before == 1
         
-        result = await delete_user(db, test_user.id)
+        result = await delete_user(db, test_user)
         assert result is True
+        
+        # Verify session is also deleted (cascade)
+        result = await db.execute(select(func.count()).select_from(Session))
+        session_count_after = result.scalar()
+        assert session_count_after == 0
 
 
 class TestVerifyUser:
@@ -182,7 +193,7 @@ class TestVerifyUser:
     @pytest.mark.asyncio
     async def test_verify_user(self, db, test_user_unverified):
         """A.4.12: Верификация пользователя."""
-        user = await verify_user(db, test_user_unverified.id)
+        user = await verify_user(db, test_user_unverified)
 
         assert user is not None
         assert user.is_verified is True
@@ -197,7 +208,7 @@ class TestSetSmsCode:
         from datetime import timedelta
         expires_at = datetime.utcnow() + timedelta(minutes=5)
         
-        user = await set_sms_code(db, test_user.id, "1234", expires_at)
+        user = await set_sms_code(db, test_user, "1234", expires_at)
 
         assert user is not None
         assert user.sms_code == "1234"
@@ -213,10 +224,10 @@ class TestClearSmsCode:
         # First set a code
         from datetime import timedelta
         expires_at = datetime.utcnow() + timedelta(minutes=5)
-        await set_sms_code(db, test_user.id, "1234", expires_at)
+        await set_sms_code(db, test_user, "1234", expires_at)
         
         # Then clear it
-        user = await clear_sms_code(db, test_user.id)
+        user = await clear_sms_code(db, test_user)
 
         assert user is not None
         assert user.sms_code is None
