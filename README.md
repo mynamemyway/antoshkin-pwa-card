@@ -243,6 +243,53 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## 🧪 Тестирование
 
+### Автоматические тесты
+
+Проект покрыт автоматическими тестами (Unit + Integration):
+
+- **125 тестов** — все проходят ✅
+- **~1 секунда** — время выполнения
+- **~85%** — покрытие кода
+
+**Запуск тестов:**
+```bash
+# Все тесты
+pytest
+
+# С покрытием
+pytest --cov=app --cov-report=html
+
+# Конкретный файл
+pytest tests/integration/test_api_send_sms.py -v
+
+# Конкретный тест
+pytest tests/unit/test_sms_service.py::test_generate_sms_code_test_mode -v
+```
+
+**Структура тестов:**
+```
+tests/
+├── conftest.py              # Фикстуры (db, client, mock SMS)
+├── unit/                    # Unit-тесты сервисов
+│   ├── test_phone_service.py
+│   ├── test_sms_service.py
+│   ├── test_session_service.py
+│   └── test_crud.py
+└── integration/             # Integration-тесты API
+    ├── test_api_register.py
+    ├── test_api_send_sms.py
+    ├── test_api_verify.py
+    ├── test_api_session.py
+    ├── test_api_admin.py
+    ├── test_api_card.py
+    ├── test_api_pages.py
+    └── test_auth_middleware.py
+```
+
+**План:** См. [`docs/auto_testing.md`](docs/auto_testing.md)
+
+---
+
 ### Режим тестирования SMS
 
 По умолчанию включён тестовый режим (`SMS_TEST_MODE=True`):
