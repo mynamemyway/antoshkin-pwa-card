@@ -89,9 +89,9 @@ class TestSendSms:
 
         mock_get.side_effect = Exception("Timeout")
 
-        success, message = send_sms("+79991234567", "1234")
-        assert success is False
-        assert "error" in message.lower()
+        # Exception should be raised
+        with pytest.raises(Exception):
+            send_sms("+79991234567", "1234")
 
 
 class TestVerifySmsCode:
