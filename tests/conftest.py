@@ -2,26 +2,43 @@
 Pytest fixtures for all tests.
 
 Provides:
-- Database session (in-memory SQLite)
+- Database session (SQLite file-based for compatibility with app.main)
 - TestClient for API requests
 - Test users and sessions
 - Mocked SMS service
 """
 
 import pytest
+import os
+import tempfile
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-from app.main import app
-from app.database import Base, get_db
+# Create temp database file for tests
+TEST_DB_FILE = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+TEST_DB_FILE.close()
+TEST_DATABASE_URL = f"sqlite:///{TEST_DB_FILE.name}"
+
+# Set test database URL BEFORE importing app modules
+os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["SMS_TEST_MODE"] = "True"
+
+# Import models FIRST to register them with Base
 from app.models import User, Session
-from app.config import settings
+
+# Reload settings to use test DATABASE_URL
+from app import config
+config.settings = config.Settings()
+
+from app.database import Base, get_db
+
+# Import app after settings override - this creates tables in test DB
+from app.main import app
 
 # Test configuration
-TEST_DATABASE_URL = "sqlite:///:memory:"
 TEST_PHONE = "+79991234567"
 TEST_PHONE_ALT = "+79999876543"
 TEST_FULL_NAME = "Тест Пользователь"
@@ -33,24 +50,26 @@ def db():
     """
     Create fresh database session for each test function.
     
-    Uses in-memory SQLite with full isolation between tests.
-    Each test gets a clean database with all tables created.
+    Uses file-based SQLite for compatibility with app.main.
+    Database is cleaned between tests.
     """
-    # Create fresh in-memory database for each test
     engine = create_engine(
         TEST_DATABASE_URL,
         connect_args={"check_same_thread": False}
     )
-    Base.metadata.create_all(bind=engine)
     
+    # Drop all tables and recreate (clean slate for each test)
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+
     SessionTesting = sessionmaker(
         autocommit=False,
         autoflush=False,
         bind=engine
     )
-    
+
     session = SessionTesting()
-    
+
     try:
         yield session
     finally:
@@ -187,3 +206,14 @@ def many_users(db):
     
     db.commit()
     yield users
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_test_db():
+    """
+    Clean up test database file after all tests.
+    """
+    yield
+    # Remove temp database file
+    if os.path.exists(TEST_DB_FILE.name):
+        os.unlink(TEST_DB_FILE.name)
