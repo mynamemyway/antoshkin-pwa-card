@@ -2,7 +2,7 @@
 Pytest fixtures for all tests.
 
 Provides:
-- Database session (SQLite file-based for compatibility with app.main)
+- Async database session (SQLite file-based for compatibility with app.main)
 - TestClient for API requests
 - Test users and sessions
 - Mocked SMS service
@@ -12,18 +12,18 @@ import pytest
 import os
 import tempfile
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import select
 
 # Create temp database file for tests
 TEST_DB_FILE = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
 TEST_DB_FILE.close()
-TEST_DATABASE_URL = f"sqlite:///{TEST_DB_FILE.name}"
+TEST_DATABASE_URL = f"sqlite+aiosqlite:///{TEST_DB_FILE.name}"
 
 # Set test database URL BEFORE importing app modules
-os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["DATABASE_URL"] = TEST_DATABASE_URL.replace("sqlite+aiosqlite://", "sqlite:///")
 os.environ["SMS_TEST_MODE"] = "True"
 
 # Import models FIRST to register them with Base
@@ -33,7 +33,7 @@ from app.models import User, Session
 from app import config
 config.settings = config.Settings()
 
-from app.database import Base, get_db
+from app.database import Base, get_async_db
 
 # Import app after settings override - this creates tables in test DB
 from app.main import app
@@ -46,57 +46,59 @@ TEST_SMS_CODE = "0000"
 
 
 @pytest.fixture(scope="function")
-def db():
+async def db():
     """
-    Create fresh database session for each test function.
-    
+    Create fresh async database session for each test function.
+
     Uses file-based SQLite for compatibility with app.main.
     Database is cleaned between tests.
     """
-    engine = create_engine(
+    engine = create_async_engine(
         TEST_DATABASE_URL,
         connect_args={"check_same_thread": False}
     )
-    
-    # Drop all tables and recreate (clean slate for each test)
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
 
-    SessionTesting = sessionmaker(
+    # Drop all tables and recreate (clean slate for each test)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+
+    async_session_maker = async_sessionmaker(
+        engine,
         autocommit=False,
         autoflush=False,
-        bind=engine
+        expire_on_commit=False
     )
 
-    session = SessionTesting()
-
-    try:
-        yield session
-    finally:
-        session.close()
+    async with async_session_maker() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+            await engine.dispose()
 
 
 @pytest.fixture(scope="function")
-def client(db):
+async def client(db):
     """
-    Create TestClient for API requests with database dependency override.
+    Create TestClient for API requests with async database dependency override.
     """
-    def override_get_db():
+    async def override_get_async_db():
         try:
             yield db
         finally:
             pass
-    
-    app.dependency_overrides[get_db] = override_get_db
-    
+
+    app.dependency_overrides[get_async_db] = override_get_async_db
+
     with TestClient(app) as test_client:
         yield test_client
-    
+
     app.dependency_overrides.clear()
 
 
 @pytest.fixture(scope="function")
-def test_user(db):
+async def test_user(db):
     """
     Create verified test user in database.
     """
@@ -107,13 +109,13 @@ def test_user(db):
         created_at=datetime.utcnow()
     )
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    await db.commit()
+    await db.refresh(user)
     yield user
 
 
 @pytest.fixture(scope="function")
-def test_user_unverified(db):
+async def test_user_unverified(db):
     """
     Create unverified test user in database.
     """
@@ -124,13 +126,13 @@ def test_user_unverified(db):
         created_at=datetime.utcnow()
     )
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    await db.commit()
+    await db.refresh(user)
     yield user
 
 
 @pytest.fixture(scope="function")
-def test_session(db, test_user):
+async def test_session(db, test_user):
     """
     Create valid test session for test_user.
     """
@@ -140,13 +142,13 @@ def test_session(db, test_user):
         expires_at=datetime.utcnow() + timedelta(days=30)
     )
     db.add(session)
-    db.commit()
-    db.refresh(session)
+    await db.commit()
+    await db.refresh(session)
     yield session
 
 
 @pytest.fixture(scope="function")
-def expired_session(db, test_user):
+async def expired_session(db, test_user):
     """
     Create expired test session for test_user.
     """
@@ -156,22 +158,22 @@ def expired_session(db, test_user):
         expires_at=datetime.utcnow() - timedelta(days=1)
     )
     db.add(session)
-    db.commit()
-    db.refresh(session)
+    await db.commit()
+    await db.refresh(session)
     yield session
 
 
 @pytest.fixture(scope="function")
 def mock_sms_success():
     """Mock SMS sending service to always succeed."""
-    with patch('app.services.sms_service.send_sms', return_value=(True, "SMS sent")) as mock:
+    with patch('app.services.sms_service.send_sms', new_callable=AsyncMock, return_value=(True, "SMS sent")) as mock:
         yield mock
 
 
 @pytest.fixture(scope="function")
 def mock_sms_failure():
     """Mock SMS sending service to always fail."""
-    with patch('app.services.sms_service.send_sms', return_value=(False, "SMS failed")) as mock:
+    with patch('app.services.sms_service.send_sms', new_callable=AsyncMock, return_value=(False, "SMS failed")) as mock:
         yield mock
 
 
@@ -189,7 +191,7 @@ def auth_headers(test_session):
 
 
 @pytest.fixture(scope="function")
-def many_users(db):
+async def many_users(db):
     """
     Create 100 test users for pagination testing.
     """
@@ -203,8 +205,8 @@ def many_users(db):
         )
         db.add(user)
         users.append(user)
-    
-    db.commit()
+
+    await db.commit()
     yield users
 
 
