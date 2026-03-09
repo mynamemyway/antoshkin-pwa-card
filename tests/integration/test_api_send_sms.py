@@ -5,9 +5,10 @@ Tests /api/send-sms endpoint functionality.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from app.models import User
 from datetime import timedelta, datetime
+from sqlalchemy import select
 
 
 class TestApiSendSms:
@@ -18,7 +19,7 @@ class TestApiSendSms:
         response = client.post("/api/send-sms", json={
             "phone": test_user.phone
         })
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["sent"] is True
@@ -28,17 +29,17 @@ class TestApiSendSms:
         response = client.post("/api/send-sms", json={
             "phone": "+79990000000"
         })
-        
+
         assert response.status_code == 404
 
     def test_send_sms_test_mode(self, client, test_user, monkeypatch):
         """B.2.3: Отправка в тестовом режиме."""
         monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', True)
-        
+
         response = client.post("/api/send-sms", json={
             "phone": test_user.phone
         })
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["sent"] is True
@@ -49,21 +50,23 @@ class TestApiSendSms:
         response = client.post("/api/send-sms", json={
             "phone": test_user.phone
         })
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["sent"] is True
 
-    def test_send_sms_code_saved(self, client, test_user, mock_sms_success, db):
+    @pytest.mark.asyncio
+    async def test_send_sms_code_saved(self, client, test_user, mock_sms_success, db):
         """B.2.5: Проверка сохранения кода в БД."""
         response = client.post("/api/send-sms", json={
             "phone": test_user.phone
         })
-        
+
         assert response.status_code == 200
-        
+
         # Verify code is saved in database
-        user = db.query(User).filter(User.phone == test_user.phone).first()
+        result = await db.execute(select(User).where(User.phone == test_user.phone))
+        user = result.scalar_one_or_none()
         assert user.sms_code is not None
         assert user.sms_code_expires_at is not None
         # Check expiration is ~5 minutes from now
@@ -75,23 +78,29 @@ class TestApiSendSms:
         response = client.post("/api/send-sms", json={
             "phone": "12345"
         })
-        
+
         assert response.status_code == 422
 
-    def test_send_sms_sms_failure(self, client, test_user, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_send_sms_sms_failure(self, client, test_user, monkeypatch):
         """Отправка SMS при сбое сервиса."""
         # Disable test mode to use real send_sms flow
         monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', False)
-        
-        # Mock requests.get to simulate SMS.ru API failure
+
+        # Mock httpx.AsyncClient to simulate SMS.ru API failure
         mock_response = MagicMock()
         mock_response.json.return_value = {"status": "ERROR", "status_message": "Insufficient funds"}
         
-        with patch('app.services.sms_service.requests.get', return_value=mock_response):
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch('app.services.sms_service.httpx.AsyncClient', return_value=mock_client):
             response = client.post("/api/send-sms", json={
                 "phone": test_user.phone
             })
-        
+
         assert response.status_code == 500
         data = response.json()
         assert "detail" in data
