@@ -19,9 +19,12 @@ from typing import Callable
 from fastapi import Request
 from fastapi.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.database import AsyncSessionLocal
 from app.services.session_service import get_session_by_token
+from app.models import User, Session
 
 
 class SessionAuthMiddleware(BaseHTTPMiddleware):
@@ -86,8 +89,13 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
         # Create async database session
         async with AsyncSessionLocal() as db:
             try:
-                # Find session by token (async)
-                session = await get_session_by_token(db, token)
+                # Find session by token with eager-loaded user (async)
+                result = await db.execute(
+                    select(Session)
+                    .options(selectinload(Session.user))
+                    .where(Session.token == token)
+                )
+                session = result.scalar_one_or_none()
 
                 if not session:
                     # Session not found in database - continue as anonymous
@@ -99,7 +107,7 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
                     # Note: Not deleting session here (let routes handle cleanup)
                     return await call_next(request)
 
-                # Session is valid - inject user
+                # Session is valid - inject user (already loaded via selectinload)
                 request.state.current_user = session.user
                 request.state.is_authenticated = True
 
