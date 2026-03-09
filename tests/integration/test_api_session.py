@@ -6,6 +6,7 @@ Tests /api/login, /api/logout, /api/me endpoints.
 
 import pytest
 from datetime import datetime, timedelta
+from sqlalchemy import select
 from app.models import User, Session
 
 
@@ -17,7 +18,7 @@ class TestApiLogin:
         response = client.post("/api/login", json={
             "phone": test_user.phone
         })
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["sent"] is True
@@ -27,44 +28,46 @@ class TestApiLogin:
         response = client.post("/api/login", json={
             "phone": "+79990000000"
         })
-        
+
         assert response.status_code == 404
 
-    def test_login_saves_code(self, client, test_user, mock_sms_success, db):
+    @pytest.mark.asyncio
+    async def test_login_saves_code(self, client, test_user, mock_sms_success, db):
         """Вход сохраняет код в БД."""
         response = client.post("/api/login", json={
             "phone": test_user.phone
         })
-        
+
         assert response.status_code == 200
-        
+
         # Verify code is saved
-        db_user = db.query(User).filter(User.phone == test_user.phone).first()
+        result = await db.execute(select(User).where(User.phone == test_user.phone))
+        db_user = result.scalar_one_or_none()
         assert db_user.sms_code is not None
 
 
 class TestApiLogout:
     """Tests for POST /api/logout endpoint."""
 
-    def test_logout_success(self, client, test_session, db):
+    @pytest.mark.asyncio
+    async def test_logout_success(self, client, test_session, db):
         """B.4.3: Успешный выход."""
         response = client.post(
             "/api/logout",
             cookies={"session_token": test_session.token}
         )
-        
+
         assert response.status_code == 200
-        
+
         # Verify session is deleted from database
-        session = db.query(Session).filter(
-            Session.token == test_session.token
-        ).first()
+        result = await db.execute(select(Session).where(Session.token == test_session.token))
+        session = result.scalar_one_or_none()
         assert session is None
 
     def test_logout_no_cookie(self, client):
         """B.4.4: Выход без cookie."""
         response = client.post("/api/logout")
-        
+
         assert response.status_code == 200
 
     def test_logout_clears_cookie(self, client, test_session):
@@ -73,7 +76,7 @@ class TestApiLogout:
             "/api/logout",
             cookies={"session_token": test_session.token}
         )
-        
+
         assert response.status_code == 200
         # Cookie should be cleared - check Set-Cookie header
         # Note: HttpOnly cookies may not appear in response.cookies
@@ -90,7 +93,7 @@ class TestApiMe:
             "/api/me",
             cookies=auth_headers
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["phone"] == test_session.user.phone
@@ -99,7 +102,7 @@ class TestApiMe:
     def test_get_current_user_unauthenticated(self, client):
         """B.4.6: Получение текущего пользователя (не авторизован)."""
         response = client.get("/api/me")
-        
+
         assert response.status_code == 401
 
     def test_get_current_user_expired_session(self, client, expired_session):
@@ -108,7 +111,7 @@ class TestApiMe:
             "/api/me",
             cookies={"session_token": expired_session.token}
         )
-        
+
         assert response.status_code == 401
 
     def test_get_current_user_invalid_token(self, client):
@@ -117,5 +120,5 @@ class TestApiMe:
             "/api/me",
             cookies={"session_token": "invalid_token"}
         )
-        
+
         assert response.status_code == 401
