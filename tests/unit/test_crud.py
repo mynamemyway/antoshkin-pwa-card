@@ -186,6 +186,7 @@ class TestSetSmsCode:
 
     def test_set_sms_code(self, db, test_user_unverified):
         """A.4.13: Установка SMS-кода."""
+        from datetime import timedelta
         expires_at = datetime.utcnow() + timedelta(minutes=5)
         updated = set_sms_code(db, test_user_unverified, "1234", expires_at)
         
