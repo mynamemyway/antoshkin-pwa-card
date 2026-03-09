@@ -8,7 +8,7 @@ Integrates with SMS gateway API (e.g., SMS.ru).
 
 Functions:
 - generate_sms_code: Create 4-digit verification code
-- send_sms: Send SMS via gateway API (stub for testing)
+- send_sms: Send SMS via gateway API (async)
 - verify_sms_code: Validate code and mark user as verified
 
 Testing:
@@ -21,7 +21,7 @@ import random
 from datetime import datetime, timedelta
 from typing import Tuple
 
-import requests
+import httpx
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -55,7 +55,7 @@ def generate_sms_code() -> str:
     return f"{random.randint(0, 9999):04d}"
 
 
-def send_sms(phone: str, code: str) -> Tuple[bool, str]:
+async def send_sms(phone: str, code: str) -> Tuple[bool, str]:
     """
     Send SMS with verification code via SMS gateway.
 
@@ -70,14 +70,14 @@ def send_sms(phone: str, code: str) -> Tuple[bool, str]:
 
     Note:
         In test mode (SMS_TEST_MODE=True), returns stub response.
-        In production, sends SMS via SMS.ru API.
+        In production, sends SMS via SMS.ru API using httpx.AsyncClient.
 
     SMS.ru API:
         GET https://sms.ru/sms/send
         Params: api_key, to, msg, json
 
     Usage:
-        success, message = send_sms("+79991234567", "1234")
+        success, message = await send_sms("+79991234567", "1234")
         if success:
             print("SMS sent successfully")
     """
@@ -87,7 +87,7 @@ def send_sms(phone: str, code: str) -> Tuple[bool, str]:
         print(f"[SMS STUB] Code {code} sent to {phone}")
         return True, "SMS sent (test mode)"
 
-    # Production mode: send via SMS.ru API
+    # Production mode: send via SMS.ru API using httpx
     url = "https://sms.ru/sms/send"
     params = {
         "api_id": settings.SMS_API_KEY,
@@ -97,34 +97,30 @@ def send_sms(phone: str, code: str) -> Tuple[bool, str]:
     }
 
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
 
-        # Log full API response for debugging
-        logger.debug(f"[SMS] SMS.ru response for {phone}: {data}")
-        print(f"[SMS] SMS.ru response: {data}")
+            # Log full API response for debugging
+            logger.debug(f"[SMS] SMS.ru response for {phone}: {data}")
+            print(f"[SMS] SMS.ru response: {data}")
 
-        if data.get("status") == "OK":
-            logger.info(f"[SMS] Sent to {phone}, code: {code}")
-            return True, "SMS sent"
-        else:
-            error_msg = data.get("status_message", "Unknown error")
-            status_code = data.get("status_code", "N/A")
-            logger.error(f"[SMS] SMS.ru error for {phone}: {error_msg} (code: {status_code})")
-            return False, f"SMS.ru error: {error_msg}"
+            if data.get("status") == "OK":
+                logger.info(f"[SMS] Sent to {phone}, code: {code}")
+                return True, "SMS sent"
+            else:
+                error_msg = data.get("status_message", "Unknown error")
+                status_code = data.get("status_code", "N/A")
+                logger.error(f"[SMS] SMS.ru error for {phone}: {error_msg} (code: {status_code})")
+                return False, f"SMS.ru error: {error_msg}"
 
-    except requests.exceptions.Timeout:
+    except httpx.TimeoutException as e:
         error_msg = "Request timeout"
         logger.error(f"[SMS] Timeout for {phone}: {error_msg}")
         return False, f"Network error: {error_msg}"
 
-    except requests.exceptions.ConnectionError as e:
-        error_msg = "Connection error"
-        logger.error(f"[SMS] Connection error for {phone}: {str(e)}")
-        return False, f"Network error: {error_msg}"
-
-    except requests.exceptions.RequestException as e:
+    except httpx.RequestError as e:
         error_msg = str(e)
         logger.error(f"[SMS] Request error for {phone}: {error_msg}")
         return False, f"Network error: {error_msg}"
@@ -133,6 +129,7 @@ def send_sms(phone: str, code: str) -> Tuple[bool, str]:
         error_msg = "JSON parse error"
         logger.error(f"[SMS] JSON parse error for {phone}: {str(e)}")
         return False, f"Response error: {error_msg}"
+
 
 def verify_sms_code(
     db: Session,
