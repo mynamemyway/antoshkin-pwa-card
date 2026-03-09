@@ -5,6 +5,7 @@ Tests /api/send-sms endpoint functionality.
 """
 
 import pytest
+from unittest.mock import patch, MagicMock
 from app.models import User
 from datetime import timedelta, datetime
 
@@ -77,11 +78,19 @@ class TestApiSendSms:
         
         assert response.status_code == 422
 
-    def test_send_sms_sms_failure(self, client, test_user, mock_sms_failure):
+    def test_send_sms_sms_failure(self, client, test_user, monkeypatch):
         """Отправка SMS при сбое сервиса."""
-        response = client.post("/api/send-sms", json={
-            "phone": test_user.phone
-        })
+        # Disable test mode to use real send_sms flow
+        monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', False)
+        
+        # Mock requests.get to simulate SMS.ru API failure
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"status": "ERROR", "status_message": "Insufficient funds"}
+        
+        with patch('app.services.sms_service.requests.get', return_value=mock_response):
+            response = client.post("/api/send-sms", json={
+                "phone": test_user.phone
+            })
         
         assert response.status_code == 500
         data = response.json()
