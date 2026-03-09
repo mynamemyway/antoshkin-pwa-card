@@ -3,7 +3,7 @@
 """
 CRUD (Create, Read, Update, Delete) service for User model.
 
-Provides database operations for user management:
+Provides async database operations for user management:
 - get_user_by_phone: Retrieve user by phone number
 - create_user: Create new user
 - update_user: Update user fields
@@ -13,58 +13,61 @@ Provides database operations for user management:
 
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import User
 
 
-def get_user_by_phone(db: Session, phone: str) -> Optional[User]:
+async def get_user_by_phone(db: AsyncSession, phone: str) -> Optional[User]:
     """
     Get user by phone number.
-    
+
     Args:
-        db: Database session
+        db: AsyncSession database session
         phone: Normalized phone number (+7XXXXXXXXXX)
-    
+
     Returns:
         User object if found, None otherwise
-    
+
     Usage:
-        user = get_user_by_phone(db, "+79991234567")
+        user = await get_user_by_phone(db, "+79991234567")
         if user:
             print(f"Found: {user.full_name}")
     """
-    return db.query(User).filter(User.phone == phone).first()
+    result = await db.execute(select(User).where(User.phone == phone))
+    return result.scalar_one_or_none()
 
 
-def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
+async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
     """
     Get user by ID.
-    
+
     Args:
-        db: Database session
+        db: AsyncSession database session
         user_id: User's primary key
-    
+
     Returns:
         User object if found, None otherwise
     """
-    return db.query(User).filter(User.id == user_id).first()
+    result = await db.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()
 
 
-def create_user(db: Session, full_name: str, phone: str) -> User:
+async def create_user(db: AsyncSession, full_name: str, phone: str) -> User:
     """
     Create new user in database.
-    
+
     Args:
-        db: Database session
+        db: AsyncSession database session
         full_name: Customer's full name
         phone: Normalized phone number (+7XXXXXXXXXX)
-    
+
     Returns:
         Created User object (with id and created_at populated)
-    
+
     Usage:
-        user = create_user(db, "Иван Иванов", "+79991234567")
+        user = await create_user(db, "Иван Иванов", "+79991234567")
         print(f"Created user with ID: {user.id}")
     """
     db_user = User(
@@ -74,167 +77,171 @@ def create_user(db: Session, full_name: str, phone: str) -> User:
         created_at=datetime.utcnow()
     )
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
+    await db.commit()
+    await db.refresh(db_user)
     return db_user
 
 
-def update_user(
-    db: Session,
+async def update_user(
+    db: AsyncSession,
     user: User,
     update_data: dict
 ) -> User:
     """
     Update user fields.
-    
+
     Args:
-        db: Database session
+        db: AsyncSession database session
         user: User object to update
         update_data: Dictionary with fields to update
             e.g., {"full_name": "Новое имя", "is_verified": True}
-    
+
     Returns:
         Updated User object
-    
+
     Usage:
-        user = get_user_by_phone(db, "+79991234567")
-        updated = update_user(db, user, {"is_verified": True})
+        user = await get_user_by_phone(db, "+79991234567")
+        updated = await update_user(db, user, {"is_verified": True})
     """
     for key, value in update_data.items():
         if hasattr(user, key):
             setattr(user, key, value)
-    
-    db.commit()
-    db.refresh(user)
+
+    await db.commit()
+    await db.refresh(user)
     return user
 
 
-def get_all_users(
-    db: Session,
+async def get_all_users(
+    db: AsyncSession,
     limit: int = 50,
     offset: int = 0
 ) -> List[User]:
     """
     Get paginated list of all users.
-    
+
     Args:
-        db: Database session
+        db: AsyncSession database session
         limit: Maximum number of users to return (default: 50)
         offset: Number of users to skip (default: 0)
-    
+
     Returns:
         List of User objects ordered by created_at (newest first)
-    
+
     Usage:
-        users = get_all_users(db, limit=10, offset=0)
+        users = await get_all_users(db, limit=10, offset=0)
         for user in users:
             print(f"{user.full_name}: {user.phone}")
     """
-    return db.query(User)\
-        .order_by(User.created_at.desc())\
-        .offset(offset)\
-        .limit(limit)\
-        .all()
+    result = await db.execute(
+        select(User)
+        .order_by(User.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return list(result.scalars().all())
 
 
-def count_users(db: Session) -> int:
+async def count_users(db: AsyncSession) -> int:
     """
     Get total count of users in database.
-    
+
     Args:
-        db: Database session
-    
+        db: AsyncSession database session
+
     Returns:
         Total number of users
-    
+
     Usage:
-        total = count_users(db)
+        total = await count_users(db)
         print(f"Total users: {total}")
     """
-    return db.query(User).count()
+    result = await db.execute(select(func.count()).select_from(User))
+    return result.scalar()
 
 
-def delete_user(db: Session, user: User) -> bool:
+async def delete_user(db: AsyncSession, user: User) -> bool:
     """
     Delete user from database.
-    
+
     Args:
-        db: Database session
+        db: AsyncSession database session
         user: User object to delete
-    
+
     Returns:
         True if deleted successfully
-    
+
     Usage:
-        user = get_user_by_phone(db, "+79991234567")
-        delete_user(db, user)
+        user = await get_user_by_phone(db, "+79991234567")
+        await delete_user(db, user)
     """
-    db.delete(user)
-    db.commit()
+    await db.delete(user)
+    await db.commit()
     return True
 
 
-def set_sms_code(
-    db: Session,
+async def set_sms_code(
+    db: AsyncSession,
     user: User,
     code: str,
     expires_at: datetime
 ) -> User:
     """
     Set SMS verification code for user.
-    
+
     Args:
-        db: Database session
+        db: AsyncSession database session
         user: User object
         code: 4-digit verification code
         expires_at: Code expiration timestamp
-    
+
     Returns:
         Updated User object
     """
     user.sms_code = code
     user.sms_code_expires_at = expires_at
-    db.commit()
-    db.refresh(user)
+    await db.commit()
+    await db.refresh(user)
     return user
 
 
-def clear_sms_code(db: Session, user: User) -> User:
+async def clear_sms_code(db: AsyncSession, user: User) -> User:
     """
     Clear SMS verification code after successful verification.
-    
+
     Args:
-        db: Database session
+        db: AsyncSession database session
         user: User object
-    
+
     Returns:
         Updated User object
     """
     user.sms_code = None
     user.sms_code_expires_at = None
-    db.commit()
-    db.refresh(user)
+    await db.commit()
+    await db.refresh(user)
     return user
 
 
-def verify_user(db: Session, user: User) -> User:
+async def verify_user(db: AsyncSession, user: User) -> User:
     """
     Mark user as verified and clear SMS code.
-    
+
     Args:
-        db: Database session
+        db: AsyncSession database session
         user: User object to verify
-    
+
     Returns:
         Updated User object with is_verified=True
-    
+
     Usage:
-        user = get_user_by_phone(db, "+79991234567")
-        verified_user = verify_user(db, user)
+        user = await get_user_by_phone(db, "+79991234567")
+        verified_user = await verify_user(db, user)
     """
     user.is_verified = True
     user.sms_code = None
     user.sms_code_expires_at = None
-    db.commit()
-    db.refresh(user)
+    await db.commit()
+    await db.refresh(user)
     return user
+
