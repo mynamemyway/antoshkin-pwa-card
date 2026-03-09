@@ -8,3 +8,4 @@ python-dotenv==1.0.1
 requests==2.32.3
 aiosqlite==0.20.0
 httpx==0.26.0
+greenlet==3.1.1
