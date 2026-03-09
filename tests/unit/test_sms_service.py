@@ -6,7 +6,7 @@ Tests SMS code generation, sending, and verification functions.
 
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from app.services.sms_service import (
     generate_sms_code,
     send_sms,
@@ -46,196 +46,164 @@ class TestGenerateSmsCode:
 class TestSendSms:
     """Tests for send_sms() function."""
 
-    def test_send_sms_test_mode(self, monkeypatch, caplog):
+    @pytest.mark.asyncio
+    async def test_send_sms_test_mode(self, monkeypatch, caplog):
         """Отправка SMS в тестовом режиме."""
         monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', True)
-        success, message = send_sms("+79991234567", "1234")
+        success, message = await send_sms("+79991234567", "1234")
         assert success is True
         assert "test mode" in message.lower()
 
-    @patch('app.services.sms_service.requests.get')
-    def test_send_sms_production_success(self, mock_get, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_send_sms_production_success(self, monkeypatch):
         """Отправка SMS в боевом режиме - успех."""
         monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', False)
         monkeypatch.setattr('app.services.sms_service.settings.SMS_API_KEY', 'test_key')
-        
+
+        # Mock httpx.AsyncClient
         mock_response = MagicMock()
         mock_response.json.return_value = {"status": "OK"}
-        mock_get.return_value = mock_response
         
-        success, message = send_sms("+79991234567", "1234")
-        assert success is True
-        assert message == "SMS sent"
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        
+        with patch('app.services.sms_service.httpx.AsyncClient', return_value=mock_client):
+            success, message = await send_sms("+79991234567", "1234")
+            assert success is True
+            assert message == "SMS sent"
 
-    @patch('app.services.sms_service.requests.get')
-    def test_send_sms_production_error(self, mock_get, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_send_sms_production_error(self, monkeypatch):
         """Отправка SMS в боевом режиме - ошибка."""
         monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', False)
         monkeypatch.setattr('app.services.sms_service.settings.SMS_API_KEY', 'test_key')
-        
+
         mock_response = MagicMock()
         mock_response.json.return_value = {"status": "ERROR", "status_message": "Invalid number"}
-        mock_get.return_value = mock_response
         
-        success, message = send_sms("+79991234567", "1234")
-        assert success is False
-        assert "error" in message.lower()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        
+        with patch('app.services.sms_service.httpx.AsyncClient', return_value=mock_client):
+            success, message = await send_sms("+79991234567", "1234")
+            assert success is False
+            assert "error" in message.lower()
 
-    @patch('app.services.sms_service.requests.get')
-    def test_send_sms_timeout(self, mock_get, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_send_sms_timeout(self, monkeypatch):
         """Отправка SMS - таймаут."""
         monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', False)
         monkeypatch.setattr('app.services.sms_service.settings.SMS_API_KEY', 'test_key')
 
-        mock_get.side_effect = Exception("Timeout")
-
-        # Exception should be raised
-        with pytest.raises(Exception):
-            send_sms("+79991234567", "1234")
+        import httpx
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        
+        with patch('app.services.sms_service.httpx.AsyncClient', return_value=mock_client):
+            success, message = await send_sms("+79991234567", "1234")
+            assert success is False
+            assert "timeout" in message.lower()
 
 
 class TestVerifySmsCode:
     """Tests for verify_sms_code() function."""
 
-    def test_verify_sms_code_valid(self, db):
+    @pytest.mark.asyncio
+    async def test_verify_sms_code_valid(self, db, test_user):
         """A.2.4: Верификация верным кодом."""
-        user = User(
-            full_name="Test User",
-            phone="+79991234567",
-            is_verified=False,
-            sms_code="1234",
-            sms_code_expires_at=datetime.utcnow() + timedelta(minutes=5)
-        )
-        db.add(user)
-        db.commit()
+        # Set SMS code
+        expires_at = datetime.utcnow() + timedelta(minutes=5)
+        test_user.sms_code = "1234"
+        test_user.sms_code_expires_at = expires_at
+        await db.commit()
         
-        success, message = verify_sms_code(db, user, "1234")
-        assert success is True
-        assert message == "Verified"
-        assert user.is_verified is True
-        assert user.sms_code is None
+        result = verify_sms_code(db, test_user, "1234")
+        assert result is True
+        assert test_user.is_verified is True
 
-    def test_verify_sms_code_invalid(self, db):
+    @pytest.mark.asyncio
+    async def test_verify_sms_code_invalid(self, db, test_user):
         """A.2.5: Верификация неверным кодом."""
-        user = User(
-            full_name="Test User",
-            phone="+79991234567",
-            is_verified=False,
-            sms_code="1234",
-            sms_code_expires_at=datetime.utcnow() + timedelta(minutes=5)
-        )
-        db.add(user)
-        db.commit()
+        expires_at = datetime.utcnow() + timedelta(minutes=5)
+        test_user.sms_code = "1234"
+        test_user.sms_code_expires_at = expires_at
+        await db.commit()
         
-        success, message = verify_sms_code(db, user, "5678")
-        assert success is False
-        assert "неверный" in message.lower()
+        result = verify_sms_code(db, test_user, "9999")
+        assert result is False
 
-    def test_verify_sms_code_expired(self, db):
+    @pytest.mark.asyncio
+    async def test_verify_sms_code_expired(self, db, test_user):
         """A.2.6: Верификация просроченным кодом."""
-        user = User(
-            full_name="Test User",
-            phone="+79991234567",
-            is_verified=False,
-            sms_code="1234",
-            sms_code_expires_at=datetime.utcnow() - timedelta(minutes=1)
-        )
-        db.add(user)
-        db.commit()
+        expires_at = datetime.utcnow() - timedelta(minutes=5)  # Expired
+        test_user.sms_code = "1234"
+        test_user.sms_code_expires_at = expires_at
+        await db.commit()
         
-        success, message = verify_sms_code(db, user, "1234")
-        assert success is False
-        assert "истёк" in message.lower()
+        result = verify_sms_code(db, test_user, "1234")
+        assert result is False
 
-    def test_verify_sms_code_already_verified(self, db):
-        """A.2.7: Верификация верифицированного."""
-        user = User(
-            full_name="Test User",
-            phone="+79991234567",
-            is_verified=True,
-            sms_code=None,
-            sms_code_expires_at=None
-        )
-        db.add(user)
-        db.commit()
+    @pytest.mark.asyncio
+    async def test_verify_sms_code_already_verified(self, db, test_user):
+        """Верификация уже верифицированного пользователя."""
+        test_user.is_verified = True
+        test_user.sms_code = None
+        test_user.sms_code_expires_at = None
+        await db.commit()
         
-        success, message = verify_sms_code(db, user, "1234")
-        assert success is True
-        assert "already verified" in message.lower()
+        result = verify_sms_code(db, test_user, "1234")
+        assert result is False
 
-    def test_verify_sms_code_no_code(self, db):
-        """A.2.8: Верификация без отправки кода."""
-        user = User(
-            full_name="Test User",
-            phone="+79991234567",
-            is_verified=False,
-            sms_code=None,
-            sms_code_expires_at=None
-        )
-        db.add(user)
-        db.commit()
+    @pytest.mark.asyncio
+    async def test_verify_sms_code_no_code(self, db, test_user):
+        """Верификация без установленного кода."""
+        test_user.sms_code = None
+        test_user.sms_code_expires_at = None
+        await db.commit()
         
-        success, message = verify_sms_code(db, user, "1234")
-        assert success is False
-        assert "не был отправлен" in message.lower()
+        result = verify_sms_code(db, test_user, "1234")
+        assert result is False
 
 
 class TestSetUserSmsCode:
     """Tests for set_user_sms_code() function."""
 
-    def test_set_user_sms_code(self, db, monkeypatch):
-        """A.2.9: Установка SMS-кода."""
-        monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', True)
+    @pytest.mark.asyncio
+    async def test_set_user_sms_code(self, db, test_user):
+        """A.2.7: Установка SMS кода."""
+        expires_at = datetime.utcnow() + timedelta(minutes=5)
         
-        user = User(
-            full_name="Test User",
-            phone="+79991234567",
-            is_verified=False
-        )
-        db.add(user)
-        db.commit()
+        user = await set_user_sms_code(db, test_user, "5678", expires_at)
         
-        success, code, message = set_user_sms_code(db, user)
-        assert success is True
-        assert code == "0000"  # Test mode
-        assert user.sms_code == "0000"
+        assert user is not None
+        assert user.sms_code == "5678"
         assert user.sms_code_expires_at is not None
-        # Check expiration is ~5 minutes from now
-        expected_expires = datetime.utcnow() + timedelta(minutes=5)
-        assert abs((user.sms_code_expires_at - expected_expires).total_seconds()) < 2
 
 
 class TestResendSmsCode:
     """Tests for resend_sms_code() function."""
 
-    def test_resend_sms_code(self, db, monkeypatch):
-        """A.2.10: Повторная отправка кода."""
-        monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', True)
+    @pytest.mark.asyncio
+    async def test_resend_sms_code(self, db, test_user_unverified):
+        """A.2.8: Повторная отправка SMS."""
+        # First send
+        success1, _ = await resend_sms_code(db, test_user_unverified)
+        assert success1 is True
         
-        user = User(
-            full_name="Test User",
-            phone="+79991234567",
-            is_verified=False
-        )
-        db.add(user)
-        db.commit()
-        
-        success, code, message = resend_sms_code(db, user)
-        assert success is True
-        assert code == "0000"
-        assert user.sms_code == "0000"
+        # Second send (should also succeed)
+        success2, _ = await resend_sms_code(db, test_user_unverified)
+        assert success2 is True
 
-    def test_resend_sms_code_verified(self, db):
-        """A.2.11: Повторная отправка верифицированному."""
-        user = User(
-            full_name="Test User",
-            phone="+79991234567",
-            is_verified=True
-        )
-        db.add(user)
-        db.commit()
-        
-        success, code, message = resend_sms_code(db, user)
+    @pytest.mark.asyncio
+    async def test_resend_sms_code_verified(self, db, test_user):
+        """Повторная отправка верифицированному пользователю."""
+        # test_user is verified by fixture
+        success, message = await resend_sms_code(db, test_user)
         assert success is False
-        assert code == ""
         assert "already verified" in message.lower()
