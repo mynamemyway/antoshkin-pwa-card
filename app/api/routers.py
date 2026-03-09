@@ -43,10 +43,8 @@ from app.services.sms_service import (
 )
 from app.services.session_service import (
     create_session,
-    create_session_async,
     get_session_by_token,
     delete_session,
-    delete_session_async,
 )
 
 # Create router instance
