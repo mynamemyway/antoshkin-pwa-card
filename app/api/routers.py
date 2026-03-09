@@ -359,7 +359,7 @@ async def verify_code(
     await db.commit()
 
     # Create session and set cookie
-    token = create_session(db, user.id)
+    token = await create_session(db, user.id)
 
     # Set HttpOnly cookie
     response.set_cookie(
