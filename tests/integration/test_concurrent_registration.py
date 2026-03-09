@@ -8,6 +8,7 @@ These tests verify that the application handles rapid sequential requests correc
 """
 
 import pytest
+from datetime import datetime, timedelta
 from app.models import User
 
 
@@ -66,9 +67,9 @@ class TestConcurrentRegistration:
         """
         monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', True)
 
-        # Set SMS code
+        # Set SMS code with valid expiration (5 minutes from now)
         test_user_unverified.sms_code = "1234"
-        test_user_unverified.sms_code_expires_at = None  # No expiration
+        test_user_unverified.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
         db.commit()
 
         # Store phone number to avoid session issues
