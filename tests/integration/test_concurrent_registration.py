@@ -56,7 +56,7 @@ class TestConcurrentRegistration:
         # All registrations should succeed
         assert all(r == 200 for r in results), f"Some registrations failed: {results}"
 
-    def test_concurrent_verify_same_user(self, client, test_user, db, monkeypatch):
+    def test_concurrent_verify_same_user(self, client, test_user_unverified, db, monkeypatch):
         """
         Multiple verification attempts for the same user should be handled safely.
 
@@ -67,12 +67,12 @@ class TestConcurrentRegistration:
         monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', True)
 
         # Set SMS code
-        test_user.sms_code = "1234"
-        test_user.sms_code_expires_at = None  # No expiration
+        test_user_unverified.sms_code = "1234"
+        test_user_unverified.sms_code_expires_at = None  # No expiration
         db.commit()
 
         # Store phone number to avoid session issues
-        phone = test_user.phone
+        phone = test_user_unverified.phone
 
         results = []
 
@@ -92,9 +92,9 @@ class TestConcurrentRegistration:
         assert all(r == 400 for r in results[1:]), "Subsequent verifications should fail"
 
         # User should be verified
-        db.refresh(test_user)
-        assert test_user.is_verified is True
-        assert test_user.sms_code is None  # Code cleared after verification
+        db.refresh(test_user_unverified)
+        assert test_user_unverified.is_verified is True
+        assert test_user_unverified.sms_code is None  # Code cleared after verification
 
     def test_concurrent_login_same_user(self, client, test_user, monkeypatch):
         """
