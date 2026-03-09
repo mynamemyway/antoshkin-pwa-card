@@ -86,11 +86,12 @@ class TestSendSms:
         """Отправка SMS - таймаут."""
         monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', False)
         monkeypatch.setattr('app.services.sms_service.settings.SMS_API_KEY', 'test_key')
-        
+
         mock_get.side_effect = Exception("Timeout")
-        
+
         success, message = send_sms("+79991234567", "1234")
         assert success is False
+        assert "error" in message.lower()
 
 
 class TestVerifySmsCode:
