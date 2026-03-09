@@ -20,19 +20,19 @@ from fastapi import Request
 from fastapi.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.database import SessionLocal
-from app.services.session_service import get_session_by_token
+from app.database import AsyncSessionLocal
+from app.services.session_service import get_session_by_token_async
 
 
 class SessionAuthMiddleware(BaseHTTPMiddleware):
     """
     Middleware for automatic session authentication.
-    
+
     Usage:
         # In main.py
         from app.middleware.auth import SessionAuthMiddleware
         app.add_middleware(SessionAuthMiddleware)
-        
+
         # In routes
         @app.get("/protected")
         async def protected_route(request: Request):
@@ -40,14 +40,14 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
             if not user:
                 raise HTTPException(status_code=401)
             return {"user": user}
-    
+
     How it works:
         1. Extract "session_token" cookie from request
         2. Query session from database by token
         3. Check if session is valid (not expired)
         4. Set request.state.current_user = session.user (or None)
         5. Continue request processing
-    
+
     Note:
         - current_user is None if:
           * No cookie present
@@ -56,7 +56,7 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
         - Middleware does NOT return 401 (routes handle this)
         - Session is NOT deleted on expiration (routes handle this)
     """
-    
+
     async def dispatch(
         self,
         request: Request,
@@ -64,50 +64,49 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         """
         Process request and inject current_user.
-        
+
         Args:
             request: FastAPI request object
             call_next: Next middleware/route handler
-        
+
         Returns:
             Response from route handler
         """
         # Initialize current_user as None (unauthenticated)
         request.state.current_user = None
         request.state.is_authenticated = False
-        
+
         # Extract session token from cookies
         token = request.cookies.get("session_token")
-        
+
         if not token:
             # No cookie - continue as anonymous
             return await call_next(request)
-        
-        # Create database session
-        db = SessionLocal()
-        
-        try:
-            # Find session by token
-            session = get_session_by_token(db, token)
-            
-            if not session:
-                # Session not found in database - continue as anonymous
-                return await call_next(request)
-            
-            # Check if session is valid (not expired)
-            if not session.is_valid():
-                # Session expired - continue as anonymous
-                # Note: Not deleting session here (let routes handle cleanup)
-                return await call_next(request)
-            
-            # Session is valid - inject user
-            request.state.current_user = session.user
-            request.state.is_authenticated = True
-            
-        finally:
-            # Always close database session
-            db.close()
-        
+
+        # Create async database session
+        async with AsyncSessionLocal() as db:
+            try:
+                # Find session by token (async)
+                session = await get_session_by_token_async(db, token)
+
+                if not session:
+                    # Session not found in database - continue as anonymous
+                    return await call_next(request)
+
+                # Check if session is valid (not expired)
+                if not session.is_valid():
+                    # Session expired - continue as anonymous
+                    # Note: Not deleting session here (let routes handle cleanup)
+                    return await call_next(request)
+
+                # Session is valid - inject user
+                request.state.current_user = session.user
+                request.state.is_authenticated = True
+
+            finally:
+                # Database session closed automatically by async context manager
+                pass
+
         # Continue request processing with injected user
         return await call_next(request)
 
@@ -116,10 +115,10 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
 async def get_current_user_optional(request: Request):
     """
     Dependency for optional authentication.
-    
+
     Returns current_user if authenticated, None otherwise.
     Does NOT raise HTTPException (use for public routes).
-    
+
     Usage:
         @app.get("/public")
         async def public_route(
@@ -135,25 +134,25 @@ async def get_current_user_optional(request: Request):
 async def get_current_user_required(request: Request):
     """
     Dependency for required authentication.
-    
+
     Returns current_user if authenticated.
     Raises HTTPException(401) if not authenticated.
-    
+
     Usage:
         @app.get("/protected")
         async def protected_route(
             user = Depends(get_current_user_required)
         ):
             return {"user": user}
-    
+
     Raises:
         HTTPException: 401 Unauthorized if not authenticated
     """
     from fastapi import HTTPException
-    
+
     user = request.state.current_user
-    
+
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
-    
+
     return user
