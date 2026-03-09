@@ -164,14 +164,14 @@ def expired_session(db, test_user):
 @pytest.fixture(scope="function")
 def mock_sms_success():
     """Mock SMS sending service to always succeed."""
-    with patch('app.api.routers.send_sms', return_value=(True, "SMS sent")) as mock:
+    with patch('app.services.sms_service.send_sms', return_value=(True, "SMS sent")) as mock:
         yield mock
 
 
 @pytest.fixture(scope="function")
 def mock_sms_failure():
     """Mock SMS sending service to always fail."""
-    with patch('app.api.routers.send_sms', return_value=(False, "SMS failed")) as mock:
+    with patch('app.services.sms_service.send_sms', return_value=(False, "SMS failed")) as mock:
         yield mock
 
 
