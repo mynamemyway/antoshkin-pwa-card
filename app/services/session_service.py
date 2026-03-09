@@ -15,7 +15,7 @@ Token is never exposed to JavaScript (XSS protection).
 import secrets
 from datetime import datetime, timedelta
 from typing import Optional
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Session
@@ -93,3 +93,60 @@ async def delete_session(db: AsyncSession, token: str) -> bool:
     await db.commit()
 
     return True
+
+
+async def cleanup_expired_sessions(db: AsyncSession) -> int:
+    """
+    Remove all expired sessions from database.
+
+    Args:
+        db: AsyncSession database session
+
+    Returns:
+        Number of sessions deleted
+    """
+    now = datetime.utcnow()
+
+    result = await db.execute(
+        select(func.count()).select_from(Session).where(
+            Session.expires_at < now
+        )
+    )
+    count = result.scalar() or 0
+
+    await db.execute(
+        Session.__table__.delete().where(
+            Session.expires_at < now
+        )
+    )
+    await db.commit()
+
+    return count
+
+
+async def delete_all_user_sessions(db: AsyncSession, user_id: int) -> int:
+    """
+    Delete all sessions for a specific user.
+
+    Args:
+        db: AsyncSession database session
+        user_id: ID of the user
+
+    Returns:
+        Number of sessions deleted
+    """
+    result = await db.execute(
+        select(func.count()).select_from(Session).where(
+            Session.user_id == user_id
+        )
+    )
+    count = result.scalar() or 0
+
+    await db.execute(
+        Session.__table__.delete().where(
+            Session.user_id == user_id
+        )
+    )
+    await db.commit()
+
+    return count
