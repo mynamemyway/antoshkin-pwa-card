@@ -16,8 +16,8 @@ class TestApiPages:
         
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/html; charset=utf-8"
-        assert b"Регистрация" in response.content
-        assert b"Антошкин дворик" in response.content
+        assert "Регистрация".encode('utf-8') in response.content
+        assert "Антошкин дворик".encode('utf-8') in response.content
 
     def test_verify_page(self, client):
         """B.7.2: Доступ к странице верификации."""
@@ -25,7 +25,7 @@ class TestApiPages:
         
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/html; charset=utf-8"
-        assert b"Подтверждение кода" in response.content
+        assert "Подтверждение кода".encode('utf-8') in response.content
 
     def test_splash_page(self, client):
         """B.7.3: Доступ к splash screen."""
@@ -33,7 +33,7 @@ class TestApiPages:
         
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/html; charset=utf-8"
-        assert b"Антошкин дворик" in response.content
+        assert "Антошкин дворик".encode('utf-8') in response.content
 
     def test_health_check(self, client):
         """B.7.4: Проверка health endpoint."""

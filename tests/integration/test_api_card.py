@@ -17,8 +17,8 @@ class TestApiCard:
         
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/html; charset=utf-8"
-        assert b"Ваша карта" in response.content
-        assert test_user.full_name.encode() in response.content
+        assert "Ваша карта".encode('utf-8') in response.content
+        assert test_user.full_name.encode('utf-8') in response.content
 
     def test_card_page_not_verified(self, client, test_user_unverified):
         """B.6.2: Доступ к карте неверифицированного."""
@@ -26,7 +26,7 @@ class TestApiCard:
         
         assert response.status_code == 200
         # Should redirect to verify page (render verify template)
-        assert b"Подтверждение кода" in response.content
+        assert "Подтверждение кода".encode('utf-8') in response.content
 
     def test_card_page_user_not_found(self, client):
         """B.6.3: Доступ к карте несуществующего."""
@@ -40,5 +40,5 @@ class TestApiCard:
         
         assert response.status_code == 200
         # Check that user data is passed to template
-        assert test_user.phone.encode() in response.content
-        assert test_user.full_name.encode() in response.content
+        assert test_user.phone.encode('utf-8') in response.content
+        assert test_user.full_name.encode('utf-8') in response.content

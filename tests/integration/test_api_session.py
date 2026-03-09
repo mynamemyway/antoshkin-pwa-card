@@ -30,7 +30,7 @@ class TestApiLogin:
         
         assert response.status_code == 404
 
-    def test_login_saves_code(self, client, test_user, mock_sms_success):
+    def test_login_saves_code(self, client, test_user, mock_sms_success, db):
         """Вход сохраняет код в БД."""
         response = client.post("/api/login", json={
             "phone": test_user.phone
@@ -39,14 +39,14 @@ class TestApiLogin:
         assert response.status_code == 200
         
         # Verify code is saved
-        db_user = client.app.state.db.query(User).filter(User.phone == test_user.phone).first()
+        db_user = db.query(User).filter(User.phone == test_user.phone).first()
         assert db_user.sms_code is not None
 
 
 class TestApiLogout:
     """Tests for POST /api/logout endpoint."""
 
-    def test_logout_success(self, client, test_session):
+    def test_logout_success(self, client, test_session, db):
         """B.4.3: Успешный выход."""
         response = client.post(
             "/api/logout",
@@ -56,7 +56,7 @@ class TestApiLogout:
         assert response.status_code == 200
         
         # Verify session is deleted from database
-        session = client.app.state.db.query(Session).filter(
+        session = db.query(Session).filter(
             Session.token == test_session.token
         ).first()
         assert session is None
@@ -82,7 +82,7 @@ class TestApiLogout:
 class TestApiMe:
     """Tests for GET /api/me endpoint."""
 
-    def test_get_current_user_authenticated(self, client, test_session, auth_headers):
+    def test_get_current_user_authenticated(self, client, test_session, auth_headers, db):
         """B.4.5: Получение текущего пользователя (авторизован)."""
         response = client.get(
             "/api/me",

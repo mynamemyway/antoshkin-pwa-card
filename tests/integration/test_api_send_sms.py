@@ -32,7 +32,7 @@ class TestApiSendSms:
 
     def test_send_sms_test_mode(self, client, test_user, monkeypatch):
         """B.2.3: Отправка в тестовом режиме."""
-        monkeypatch.setattr('app.api.routers.settings.SMS_TEST_MODE', True)
+        monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', True)
         
         response = client.post("/api/send-sms", json={
             "phone": test_user.phone
@@ -53,7 +53,7 @@ class TestApiSendSms:
         data = response.json()
         assert data["sent"] is True
 
-    def test_send_sms_code_saved(self, client, test_user, mock_sms_success):
+    def test_send_sms_code_saved(self, client, test_user, mock_sms_success, db):
         """B.2.5: Проверка сохранения кода в БД."""
         response = client.post("/api/send-sms", json={
             "phone": test_user.phone
@@ -62,8 +62,7 @@ class TestApiSendSms:
         assert response.status_code == 200
         
         # Verify code is saved in database
-        db_user = client.app.dependency_overrides.get(lambda: None)
-        user = client.app.state.db.query(User).filter(User.phone == test_user.phone).first()
+        user = db.query(User).filter(User.phone == test_user.phone).first()
         assert user.sms_code is not None
         assert user.sms_code_expires_at is not None
         # Check expiration is ~5 minutes from now
