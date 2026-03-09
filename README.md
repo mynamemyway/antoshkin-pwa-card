@@ -254,6 +254,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - **130 тестов** — все проходят ✅
 - **~1.7 секунды** — время выполнения
 - **~85%** — покрытие кода
+<img width="1076" height="336" alt="image" src="https://github.com/user-attachments/assets/7974f10b-5d1a-4b1a-b89c-c96c4733e414" />
 
 **Запуск тестов:**
 ```bash
