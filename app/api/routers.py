@@ -347,29 +347,20 @@ async def verify_code(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
-    # Check if code exists (required for all users, including verified)
-    if not user.sms_code:
-        raise HTTPException(status_code=400, detail="Код не был отправлен")
+    # Verify SMS code using service function
+    success, message = await verify_sms_code(db, user, verify_data.code)
 
-    # Check if code has expired
-    if user.sms_code_expires_at is None or datetime.utcnow() > user.sms_code_expires_at:
-        raise HTTPException(status_code=400, detail="Срок действия кода истёк")
-
-    # Compare codes
-    if user.sms_code != verify_data.code:
-        raise HTTPException(status_code=400, detail="Неверный код")
+    if not success:
+        # Map service messages to HTTP status codes
+        if "Код не был отправлен" in message:
+            raise HTTPException(status_code=400, detail=message)
+        elif "истёк" in message.lower() or "ошибка" in message.lower():
+            raise HTTPException(status_code=400, detail=message)
+        else:
+            raise HTTPException(status_code=400, detail=message)
 
     # Save user_id BEFORE commit (user becomes expired after commit in async)
     user_id = user.id
-
-    # Code is valid - mark as verified if not already
-    if not user.is_verified:
-        user.is_verified = True
-
-    # Clear SMS code after successful verification
-    user.sms_code = None
-    user.sms_code_expires_at = None
-    await db.commit()
 
     # Create session and set cookie
     token = await create_session(db, user_id)
