@@ -404,21 +404,22 @@ pytest tests/unit/test_sms_service.py::test_verify_sms_code_valid -v
 
 **Unit-тесты:**
 - ✅ `test_phone_service.py` — 22 теста (валидация телефонов)
-- ✅ `test_sms_service.py` — 15 тестов (SMS-верификация)
-- ✅ `test_session_service.py` — 14 тестов (управление сессиями)
-- ✅ `test_crud.py` — 18 тестов (CRUD операции)
+- ✅ `test_sms_service.py` — 15 тестов (SMS-верификация, async)
+- ✅ `test_session_service.py` — 14 тестов (управление сессиями, async)
+- ✅ `test_crud.py` — 18 тестов (CRUD операции, async)
 
 **Integration-тесты:**
 - ✅ `test_api_register.py` — 9 тестов (регистрация)
 - ✅ `test_api_send_sms.py` — 7 тестов (отправка SMS)
-- ✅ `test_api_verify.py` — 9 тестов (верификация кода)
-- ✅ `test_api_session.py` — 10 тестов (сессии)
-- ✅ `test_api_admin.py` — 8 тестов (админ-панель)
+- ✅ `test_api_verify.py` — 9 тестов (верификация кода, async)
+- ✅ `test_api_session.py` — 10 тестов (сессии, async)
+- ✅ `test_api_admin.py` — 8 тестов (админ-панель, async)
 - ✅ `test_api_card.py` — 4 теста (карта пользователя)
 - ✅ `test_api_pages.py` — 4 теста (страницы)
 - ✅ `test_auth_middleware.py` — 5 тестов (middleware аутентификации)
+- ✅ `test_concurrent_registration.py` — 5 тестов (конкурентность, async)
 
-**Итого:** 125 тестов, все проходят ✅
+**Итого:** 130 тестов, все проходят ✅
 
 ### Не реализовано:
 
@@ -487,8 +488,8 @@ pytest tests/integration/test_api_send_sms.py -v
 
 ## 📈 Метрики качества
 
-- ✅ Все тесты проходят (100% pass rate) — 125/125
-- ✅ Время выполнения всех тестов: ~1 секунда
+- ✅ Все тесты проходят (100% pass rate) — 130/130
+- ✅ Время выполнения всех тестов: ~1.7 секунды
 - ⏳ Время выполнения CI pipeline: ≤ 10 минут (не настроено)
 - ✅ Покрытие кода: ≥ 80%
 

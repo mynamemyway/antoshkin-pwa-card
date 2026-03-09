@@ -247,8 +247,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 Проект покрыт автоматическими тестами (Unit + Integration):
 
-- **125 тестов** — все проходят ✅
-- **~1 секунда** — время выполнения
+- **130 тестов** — все проходят ✅
+- **~1.7 секунды** — время выполнения
 - **~85%** — покрытие кода
 
 **Запуск тестов:**
@@ -283,7 +283,8 @@ tests/
     ├── test_api_admin.py
     ├── test_api_card.py
     ├── test_api_pages.py
-    └── test_auth_middleware.py
+    ├── test_auth_middleware.py
+    └── test_concurrent_registration.py
 ```
 
 **План:** См. [`docs/auto_testing.md`](docs/auto_testing.md)
