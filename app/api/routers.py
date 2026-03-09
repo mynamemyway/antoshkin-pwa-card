@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
@@ -123,25 +124,32 @@ async def admin_panel(
     # Ensure page is at least 1
     page = max(1, page)
     
-    # Build base query
-    query = db.query(User)
-    
-    # Apply search filter if provided
+    # Build base query with search filter
+    stmt = select(User)
     if search:
-        query = query.filter(User.phone.ilike(f"%{search}%"))
+        stmt = stmt.where(User.phone.ilike(f"%{search}%"))
     
     # Get total count (before pagination)
-    total = query.count()
+    count_stmt = select(func.count()).select_from(User)
+    if search:
+        count_stmt = count_stmt.where(User.phone.ilike(f"%{search}%"))
+    
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar()
     
     # Calculate offset and total pages
     offset = (page - 1) * per_page
     total_pages = (total + per_page - 1) // per_page if total > 0 else 1
     
     # Get users for current page (ordered by created_at desc)
-    users = query.order_by(User.created_at.desc()).offset(offset).limit(per_page).all()
+    stmt = stmt.order_by(User.created_at.desc()).offset(offset).limit(per_page)
+    result = await db.execute(stmt)
+    users = result.scalars().all()
     
     # Get verified count (from entire database, not just filtered)
-    verified_count = db.query(User).filter(User.is_verified == True).count()
+    verified_stmt = select(func.count()).select_from(User).where(User.is_verified == True)
+    verified_result = await db.execute(verified_stmt)
+    verified_count = verified_result.scalar() or 0
     
     return request.state.templates.TemplateResponse(
         "admin.html",
@@ -171,7 +179,9 @@ async def export_users(request: Request, db: AsyncSession = Depends(get_async_db
     Returns:
         CSV file with user data for download
     """
-    users = db.query(User).order_by(User.created_at.desc()).all()
+    stmt = select(User).order_by(User.created_at.desc())
+    result = await db.execute(stmt)
+    users = result.scalars().all()
     
     # Create CSV in memory
     output = io.StringIO()
