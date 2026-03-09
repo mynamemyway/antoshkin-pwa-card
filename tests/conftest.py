@@ -84,10 +84,7 @@ async def client(db):
     Create TestClient for API requests with async database dependency override.
     """
     async def override_get_async_db():
-        try:
-            yield db
-        finally:
-            pass
+        yield db
 
     app.dependency_overrides[get_async_db] = override_get_async_db
 
