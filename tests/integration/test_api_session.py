@@ -75,8 +75,10 @@ class TestApiLogout:
         )
         
         assert response.status_code == 200
-        # Cookie should be cleared (empty value or expired)
-        assert "session_token" in response.cookies
+        # Cookie should be cleared - check Set-Cookie header
+        # Note: HttpOnly cookies may not appear in response.cookies
+        set_cookie = response.headers.get("set-cookie", "")
+        assert "session_token" in set_cookie or "session_token" in response.cookies or response.cookies.get("session_token") == ""
 
 
 class TestApiMe:
