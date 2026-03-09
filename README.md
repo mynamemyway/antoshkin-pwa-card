@@ -350,6 +350,37 @@ SMS_API_KEY=your_api_id  # API ID от SMS.ru
 
 ---
 
+## 🛠 Сервисные функции (вызовы на данный момент не реализованы)
+
+### `app/services/session_service.py`
+
+**`cleanup_expired_sessions(db)`**
+- **Назначение:** Удаляет все просроченные сессии из базы данных
+- **Зачем:** Предотвращает разрастание таблицы `sessions`, освобождает место
+- **Когда использовать:** Запускать по расписанию (cron) раз в сутки/неделю
+- **Пример:**
+  ```python
+  @app.on_event("startup")
+  async def cleanup():
+      async with AsyncSessionLocal() as db:
+          deleted = await cleanup_expired_sessions(db)
+          logger.info(f"Deleted {deleted} expired sessions")
+  ```
+
+**`delete_all_user_sessions(db, user_id)`**
+- **Назначение:** Удаляет ВСЕ сессии конкретного пользователя
+- **Зачем:** Принудительный логаут на всех устройствах (например, при смене пароля или подозрительной активности)
+- **Когда использовать:** В админ-панели или при сбросе доступа
+- **Пример:**
+  ```python
+  @router.post("/admin/users/{user_id}/logout-all")
+  async def logout_all(user_id: int, db: AsyncSession = Depends(get_async_db)):
+      count = await delete_all_user_sessions(db, user_id)
+      return {"deleted_sessions": count}
+  ```
+
+---
+
 ## 📞 SMS-шлюз
 
 ### Интеграция с SMS.ru
