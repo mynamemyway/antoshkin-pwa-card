@@ -85,8 +85,16 @@ class TestConcurrentRegistration:
             results.append(response.status_code)
 
         # First should succeed (200), others get 400 (code already used)
+        # Note: After first verification, user.is_verified=True and sms_code=None
+        # So subsequent requests get 400 "Код не был отправлен" or 400 "Неверный код"
         assert results[0] == 200, "First verification should succeed"
+        # All subsequent requests should fail (400) - code was cleared
         assert all(r == 400 for r in results[1:]), "Subsequent verifications should fail"
+
+        # User should be verified
+        db.refresh(test_user)
+        assert test_user.is_verified is True
+        assert test_user.sms_code is None  # Code cleared after verification
 
     def test_concurrent_login_same_user(self, client, test_user, monkeypatch):
         """
