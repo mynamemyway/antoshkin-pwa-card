@@ -40,3 +40,4 @@ Thumbs.db
 
 # For develop
 /4dev
+.lsp.json
