@@ -30,7 +30,7 @@ DEBUG=True
 ### 1.2. Docker-слой
 
 **Dockerfile:** Используем `python:3.12-slim`.
-**docker-compose.yml:** Главные правки здесь — прямой проброс сертификатов и автозапуск.
+**docker compose.yml:** Главные правки здесь — прямой проброс сертификатов и автозапуск.
 
 ```yaml
 services:
@@ -176,7 +176,7 @@ scp .env.production mynamemyway@31.186.100.179:/home/mynamemyway/projects/antosh
 
 ```bash
 cd /home/mynamemyway/projects/antoshkin-pwa-card
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ### 5.4. Авто-продление SSL (Бессмертный режим)
@@ -184,7 +184,7 @@ docker-compose up -d --build
 Настрой это одной командой:
 
 ```bash
-sudo certbot renew --dry-run --pre-hook "docker-compose -f /home/mynamemyway/projects/antoshkin-pwa-card/docker-compose.yml stop nginx" --post-hook "docker-compose -f /home/mynamemyway/projects/antoshkin-pwa-card/docker-compose.yml start nginx"
+sudo certbot renew --dry-run --pre-hook "docker compose -f /home/mynamemyway/projects/antoshkin-pwa-card/docker compose.yml stop nginx" --post-hook "docker compose -f /home/mynamemyway/projects/antoshkin-pwa-card/docker compose.yml start nginx"
 ```
 
 ---
@@ -204,13 +204,13 @@ sudo certbot renew --dry-run --pre-hook "docker-compose -f /home/mynamemyway/pro
 **Просмотр логов приложения:**
 
 ```bash
-docker-compose logs -f app
+docker compose logs -f app
 ```
 
 **Просмотр логов nginx:**
 
 ```bash
-docker-compose logs -f nginx
+docker compose logs -f nginx
 ```
 
 ### 6.3. Резервное копирование БД
@@ -298,7 +298,7 @@ git pull
 
 3. **Пересобери и перезапусти контейнеры:**
 ```bash
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 **Почему именно так?**
@@ -313,8 +313,8 @@ docker-compose up -d --build
 
 | Задача | Команда |
 | --- | --- |
-| **Посмотреть логи** | `docker-compose logs -f app` |
-| **Проверить статус** | `docker-compose ps` |
-| **Обновить код** | `git pull && docker-compose up -d --build` |
-| **Перезапустить всё** | `docker-compose restart` |
+| **Посмотреть логи** | `docker compose logs -f app` |
+| **Проверить статус** | `docker compose ps` |
+| **Обновить код** | `git pull && docker compose up -d --build` |
+| **Перезапустить всё** | `docker compose restart` |
 | **Удалить лишний мусор** | `docker system prune -f` |
