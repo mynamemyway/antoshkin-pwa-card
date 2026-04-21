@@ -109,12 +109,12 @@ server {
 * **Цель:** Перейти в директорию проектов на сервере
 * **Команда:**
 ```bash
-ssh mynamemyway@91.206.14.93
+ssh mynamemyway@31.186.100.179
 ```
 
 ### 3.1. Инфраструктура и DNS
 
-1. **DNS:** Убедись, что А-запись `card.rassada1.ru` → `91.206.14.93` активна (`ping card.rassada1.ru`).
+1. **DNS:** Убедись, что А-запись `card.rassada1.ru` → `31.186.100.179` активна (`ping card.rassada1.ru`).
 2. **Firewall:** Открываем двери для веба.
 
 ```bash
@@ -169,7 +169,7 @@ mkdir -p data logs backups
 **С локального Mac скопировать `.env.production` на сервер:**
 
 ```bash
-scp .env.production mynamemyway@91.206.14.93:/home/mynamemyway/projects/antoshkin-pwa-card/.env
+scp .env.production mynamemyway@31.186.100.179:/home/mynamemyway/projects/antoshkin-pwa-card/.env
 ```
 
 ### 5.3. Старт приложения - СТОП - НЕ СДЕЛАНО (сделать после А-записи)
