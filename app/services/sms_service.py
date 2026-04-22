@@ -94,6 +94,10 @@ async def send_sms(phone: str, code: str) -> Tuple[bool, str]:
         "json": 1
     }
 
+    # Add sender name if configured
+    if settings.SMS_SENDER_NAME:
+        params["from"] = settings.SMS_SENDER_NAME
+
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url, params=params, timeout=10.0)
