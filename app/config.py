@@ -26,9 +26,9 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite:///./loyalty.db"
 
-    # SMS Service
+    # SMS Service (SMS_SENDER_NAME = "rassada1.ru")
     SMS_API_KEY: str = ""
-    SMS_SENDER_NAME: str = "Antoshkin"
+    SMS_SENDER_NAME: str = ""
     SMS_TEST_MODE: bool = True
 
     # App Settings
