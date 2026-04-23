@@ -11,9 +11,15 @@
         <h1 class="text-3xl font-bold text-gray-900">
             Подтверждение кода
         </h1>
+        {% if auth_method == "call" %}
+        <p class="mt-2 text-sm text-gray-600">
+            Вам поступит звонок. Введите последние 4 цифры входящего номера
+        </p>
+        {% else %}
         <p class="mt-2 text-sm text-gray-600">
             Введите 4-значный код из SMS
         </p>
+        {% endif %}
         <p class="mt-1 text-xs text-gray-500">
             Номер: <span id="phoneDisplay" class="font-medium"></span>
         </p>
@@ -28,9 +34,15 @@
 
                 <!-- SMS Code Field -->
                 <div>
+                    {% if auth_method == "call" %}
+                    <label for="code" class="block text-sm font-medium text-gray-700 text-center">
+                        Код из звонка
+                    </label>
+                    {% else %}
                     <label for="code" class="block text-sm font-medium text-gray-700 text-center">
                         Код из SMS
                     </label>
+                    {% endif %}
                     <div class="mt-2 flex justify-center">
                         <input
                             id="code"
@@ -42,7 +54,11 @@
                             required
                             autofocus
                             placeholder="0000"
+                            {% if auth_method == "call" %}
+                            title="Введите последние 4 цифры номера"
+                            {% else %}
                             title="Введите код из SMS"
+                            {% endif %}
                             class="appearance-none block w-32 px-3 py-3 text-center text-2xl font-mono border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
                             oninput="this.value = this.value.replace(/[^0-9]/g, '')"
                         >
@@ -125,9 +141,11 @@
 
     <!-- Info -->
     <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        {% if auth_method == "sms" %}
         <p class="text-xs text-center text-gray-500">
             Проверьте папку «Спам», если не получили SMS
         </p>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
