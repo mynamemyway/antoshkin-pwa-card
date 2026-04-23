@@ -1,4 +1,24 @@
-```
-# Documentation
-docs/planning_check_call.md
-```
+# Файл и папка с секретами
+getgrist_key.md
+.env
+env/
+
+# Данные базы Grist (весит много и меняется постоянно)
+persist/
+backups/
+4dev/versions/
+
+# Системные файлы macos
+.DS_Store
+
+# Документция
+docs/
+4dev/archive_old
+
+# Виртуальное окружение
+venv*
+
+pp_less.py
+/__pycache__
+/.pi-lens
+4dev/plans/temp-code.py
