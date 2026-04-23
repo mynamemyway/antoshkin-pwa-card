@@ -90,7 +90,7 @@ class TestApiSendSms:
         # Mock httpx.AsyncClient to simulate SMS.ru API failure
         mock_response = MagicMock()
         mock_response.json.return_value = {"status": "ERROR", "status_message": "Insufficient funds"}
-        
+
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -104,4 +104,5 @@ class TestApiSendSms:
         assert response.status_code == 500
         data = response.json()
         assert "detail" in data
-        assert "Failed to send SMS" in data["detail"]
+        # Error message now comes directly from SMS.ru API
+        assert "SMS.ru error" in data["detail"] or "Failed to send SMS" in data["detail"]
