@@ -1,45 +1,4 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-.eggs/
-
-# Virtual environments
-.env.production
-.env
-.venv
-venv/
-ENV/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Database (SQLite)
-*.db
-*.db-journal
-loyalty.db
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-
-# For develop
-/4dev
-.lsp.json
-docs/temp.md
-docs/done/temp.md
+```
+# Documentation
+docs/planning_check_call.md
+```
