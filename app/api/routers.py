@@ -36,12 +36,8 @@ from app.services.crud import (
     get_user_by_phone,
     create_user,
 )
-from app.services.sms_service import (
-    generate_sms_code,
-    send_sms,
-    verify_sms_code,
-    set_user_sms_code,
-)
+from app.services.auth_dispatcher import send_verification_code
+from app.services.sms_service import verify_sms_code
 from app.services.session_service import (
     create_session,
     get_session_by_token,
@@ -97,7 +93,11 @@ async def verify_page(request: Request):
     Returns:
         Rendered HTML template for the verification page
     """
-    return request.state.templates.TemplateResponse("verify.html", {"request": request})
+    from app.config import settings
+    return request.state.templates.TemplateResponse("verify.html", {
+        "request": request,
+        "auth_method": settings.AUTH_METHOD
+    })
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -123,34 +123,34 @@ async def admin_panel(
     """
     # Ensure page is at least 1
     page = max(1, page)
-    
+
     # Build base query with search filter
     stmt = select(User)
     if search:
         stmt = stmt.where(User.phone.ilike(f"%{search}%"))
-    
+
     # Get total count (before pagination)
     count_stmt = select(func.count()).select_from(User)
     if search:
         count_stmt = count_stmt.where(User.phone.ilike(f"%{search}%"))
-    
+
     total_result = await db.execute(count_stmt)
     total = total_result.scalar()
-    
+
     # Calculate offset and total pages
     offset = (page - 1) * per_page
     total_pages = (total + per_page - 1) // per_page if total > 0 else 1
-    
+
     # Get users for current page (ordered by created_at desc)
     stmt = stmt.order_by(User.created_at.desc()).offset(offset).limit(per_page)
     result = await db.execute(stmt)
     users = result.scalars().all()
-    
+
     # Get verified count (from entire database, not just filtered)
     verified_stmt = select(func.count()).select_from(User).where(User.is_verified == True)
     verified_result = await db.execute(verified_stmt)
     verified_count = verified_result.scalar() or 0
-    
+
     return request.state.templates.TemplateResponse(
         "admin.html",
         {
@@ -171,25 +171,25 @@ async def admin_panel(
 async def export_users(request: Request, db: AsyncSession = Depends(get_async_db)):
     """
     Export all users to CSV file.
-    
+
     Args:
         request: FastAPI request object
         db: AsyncSession database session
-    
+
     Returns:
         CSV file with user data for download
     """
     stmt = select(User).order_by(User.created_at.desc())
     result = await db.execute(stmt)
     users = result.scalars().all()
-    
+
     # Create CSV in memory
     output = io.StringIO()
     writer = csv.writer(output)
-    
+
     # Write header
     writer.writerow(['id', 'full_name', 'phone', 'is_verified', 'created_at'])
-    
+
     # Write user data
     for user in users:
         writer.writerow([
@@ -199,11 +199,11 @@ async def export_users(request: Request, db: AsyncSession = Depends(get_async_db
             user.is_verified,
             user.created_at.isoformat()
         ])
-    
+
     # Create response with CSV file
     csv_content = output.getvalue()
     output.close()
-    
+
     return StreamingResponse(
         io.BytesIO(csv_content.encode('utf-8')),
         media_type="text/csv",
@@ -215,27 +215,27 @@ async def export_users(request: Request, db: AsyncSession = Depends(get_async_db
 async def card_page(request: Request, phone: str, db: AsyncSession = Depends(get_async_db)):
     """
     Display user's loyalty card with QR code.
-    
+
     Args:
         request: FastAPI request object
         phone: Normalized phone number
         db: AsyncSession database session
-    
+
     Returns:
         Rendered card HTML template (only for verified users)
     """
     user = await get_user_by_phone(db, phone)
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     if not user.is_verified:
         # Redirect to verification page if not verified
         return request.state.templates.TemplateResponse(
             "verify.html",
             {"request": request, "phone": phone}
         )
-    
+
     return request.state.templates.TemplateResponse(
         "card.html",
         {"request": request, "user": user}
@@ -282,12 +282,13 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_async_d
 
 
 @router.post("/api/send-sms", response_model=SMSResponse)
-async def send_sms_endpoint(sms_data: SMSRequest, db: AsyncSession = Depends(get_async_db)):
+async def send_sms_endpoint(sms_data: SMSRequest, request: Request, db: AsyncSession = Depends(get_async_db)):
     """
     Send SMS verification code to user.
 
     Args:
         sms_data: Phone number for SMS delivery
+        request: FastAPI request object (for IP extraction)
         db: AsyncSession database session
 
     Returns:
@@ -301,16 +302,13 @@ async def send_sms_endpoint(sms_data: SMSRequest, db: AsyncSession = Depends(get
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Generate code
-    code = generate_sms_code()
+    # Send code via configured method (SMS or Flash Call)
+    success, code, message = await send_verification_code(user.phone, request)
 
-    # Send SMS FIRST (atomic: don't save code if SMS fails)
-    sms_sent, message = await send_sms(user.phone, code)
+    if not success:
+        raise HTTPException(status_code=500, detail=message)
 
-    if not sms_sent:
-        raise HTTPException(status_code=500, detail="Failed to send SMS")
-
-    # SMS sent successfully - save code to database
+    # Code sent successfully - save to database
     user.sms_code = code
     user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
     await db.commit()
@@ -383,28 +381,30 @@ async def verify_code(
 @router.post("/api/login")
 async def login(
     sms_data: SMSRequest,
+    request: Request,
     db: AsyncSession = Depends(get_async_db),
     response: Response = None
 ):
     """
     Login by phone number.
-    
+
     Logic:
     - Check if phone exists in database
     - If found (any status): send SMS code, return 200 OK (redirect to verify)
     - If not found: return 404 Not Found (frontend should trigger registration)
-    
+
     Args:
         sms_data: Phone number for login
+        request: FastAPI request object (for IP extraction)
         db: AsyncSession database session
         response: FastAPI response object
-    
+
     Returns:
         {"sent": true} if SMS was sent successfully
-    
+
     Raises:
         HTTPException: 404 if user not found (trigger registration)
-    
+
     Usage (Frontend):
         # Try to login
         const response = await fetch('/api/login', {
@@ -412,7 +412,7 @@ async def login(
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({phone: '+79991234567'})
         });
-        
+
         if (response.status === 404) {
             // User not found - start registration flow
         } else if (response.ok) {
@@ -421,24 +421,21 @@ async def login(
     """
     # Find user by phone
     user = await get_user_by_phone(db, sms_data.phone)
-    
+
     if not user:
         # User not found - frontend should trigger registration
         raise HTTPException(status_code=404, detail="User not found")
 
-    # User exists - send SMS code (for both verified and not verified)
+    # User exists - send code via configured method (SMS or Flash Call)
     # This handles Scenario 3 (verified, no cookie) and Scenario 4 (not verified)
 
-    # Generate code
-    code = generate_sms_code()
+    # Send code via configured method
+    success, code, message = await send_verification_code(user.phone, request)
 
-    # Send SMS FIRST (atomic: don't save code if SMS fails)
-    sms_sent, message = await send_sms(user.phone, code)
+    if not success:
+        raise HTTPException(status_code=500, detail=message)
 
-    if not sms_sent:
-        raise HTTPException(status_code=500, detail="Failed to send SMS")
-
-    # SMS sent successfully - save code to database
+    # Code sent successfully - save to database
     user.sms_code = code
     user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
     await db.commit()
@@ -453,26 +450,26 @@ async def logout(
 ):
     """
     Logout user (delete session).
-    
+
     Logic:
     - Get session token from cookie
     - Delete session from database
     - Clear cookie in browser
-    
+
     Args:
         request: FastAPI request object (for cookie access)
         db: AsyncSession database session
-    
+
     Returns:
         {"success": true} if logged out successfully
     """
     # Get token from cookie
     token = request.cookies.get(COOKIE_NAME)
-    
+
     if token:
         # Delete session from database
         await delete_session(db, token)
-    
+
     # Create response with cookie cleared
     response = Response(content='{"success": true}')
     response.delete_cookie(
@@ -482,7 +479,7 @@ async def logout(
         secure=True,
         samesite="lax"
     )
-    
+
     return response
 
 
@@ -493,27 +490,27 @@ async def get_current_user(
 ):
     """
     Get current authenticated user.
-    
+
     Logic:
     - Middleware already validated session and set request.state.current_user
     - Just return the user if authenticated
-    
+
     Args:
         request: FastAPI request object (for cookie access)
         db: AsyncSession database session
-    
+
     Returns:
         User data if authenticated
-    
+
     Raises:
         HTTPException: 401 Unauthorized if not authenticated
-    
+
     Usage (Frontend):
         # Check if user is authenticated
         const response = await fetch('/api/me', {
             credentials: 'include'  // Send cookies automatically
         });
-        
+
         if (response.ok) {
             const user = await response.json();
             // User is authenticated
@@ -523,9 +520,9 @@ async def get_current_user(
     """
     # Get user from request.state (injected by middleware)
     user = request.state.current_user
-    
+
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     # Return user data
     return user
