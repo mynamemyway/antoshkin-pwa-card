@@ -1,24 +1,45 @@
-# Файл и папка с секретами
-getgrist_key.md
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.env.production
 .env
-env/
+.venv
+venv/
+ENV/
 
-# Данные базы Grist (весит много и меняется постоянно)
-persist/
-backups/
-4dev/versions/
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
 
-# Системные файлы macos
+# Database (SQLite)
+*.db
+*.db-journal
+loyalty.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# OS
 .DS_Store
+Thumbs.db
 
-# Документция
-docs/
-4dev/archive_old
+# Logs
+*.log
 
-# Виртуальное окружение
-venv*
-
-pp_less.py
-/__pycache__
-/.pi-lens
-4dev/plans/temp-code.py
+# For develop
+/4dev
+.lsp.json
+docs/temp.md
+docs/done/temp.md
