@@ -527,7 +527,7 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
 
         # SMS.ru sends data in data[1], data[2], ... data[100] format
         # Each entry is multi-line text: type\ncheck_id\nstatus\ntimestamp
-        api_id = settings.sms_api_id  # Your API ID from SMS.ru
+        api_id = settings.SMS_API_KEY  # Your API_KEY from SMS.ru
 
         # Process each data entry
         from sqlalchemy import select
