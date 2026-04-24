@@ -67,11 +67,12 @@ async def send_flash_call(phone: str, ip: str) -> Tuple[bool, str, str]:
         return True, TEST_CODE, "Call initiated (test mode)"
 
     # Production mode: make Flash Call via SMS.ru API using httpx
+    # Установлено значение "-1" вместо "ip", чтобы sms.ru не получал локальный ip
     url = "https://sms.ru/code/call"
     params = {
         "api_id": settings.SMS_API_KEY,
         "phone": phone,
-        "ip": ip,
+        "ip": -1,
         "partner_id": "104935"  # Partner program ID
     }
 
