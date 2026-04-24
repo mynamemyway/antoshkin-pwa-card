@@ -13,6 +13,7 @@ Defines all HTTP endpoints for:
 
 import csv
 import io
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -21,8 +22,11 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
+logger = logging.getLogger(__name__)
+
 from app.database import get_db, get_async_db
 from app.models import User, Session
+from app.config import settings
 from app.schemas import (
     UserCreate,
     UserOut,
@@ -38,6 +42,7 @@ from app.services.crud import (
 )
 from app.services.auth_dispatcher import send_verification_code
 from app.services.sms_service import verify_sms_code
+from app.services.check_call_service import verify_check_call_status
 from app.services.session_service import (
     create_session,
     get_session_by_token,
@@ -284,33 +289,45 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_async_d
 @router.post("/api/send-sms", response_model=SMSResponse)
 async def send_sms_endpoint(sms_data: SMSRequest, request: Request, db: AsyncSession = Depends(get_async_db)):
     """
-    Send SMS verification code to user.
+    Send verification code to user (SMS, Flash Call, or Check Call).
 
     Args:
-        sms_data: Phone number for SMS delivery
+        sms_data: Phone number for verification
         request: FastAPI request object (for IP extraction)
         db: AsyncSession database session
 
     Returns:
-        {"sent": true} if SMS was sent successfully
+        {"sent": true} if verification was initiated successfully
 
     Raises:
-        HTTPException: If user not found or SMS failed
+        HTTPException: If user not found or verification initiation failed
+
+    Note:
+        For check_call method: saves check_id to sms_check_id field
+        For SMS/Flash Call: saves code to sms_code field
     """
     user = await get_user_by_phone(db, sms_data.phone)
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Send code via configured method (SMS or Flash Call)
+    # Send code via configured method (SMS, Flash Call, or Check Call)
     success, code, message = await send_verification_code(user.phone, request)
 
     if not success:
         raise HTTPException(status_code=500, detail=message)
 
-    # Code sent successfully - save to database
-    user.sms_code = code
-    user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+    # Save verification data to database based on auth method
+    if settings.AUTH_METHOD == "check_call":
+        # Check Call mode: save check_id for webhook verification
+        user.sms_check_id = code
+        user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+        logger.info(f"[API] Check call initiated for {user.phone}, check_id: {code}")
+    else:
+        # SMS/Flash Call mode: save code for manual verification
+        user.sms_code = code
+        user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+
     await db.commit()
 
     return SMSResponse(sent=True)
@@ -435,13 +452,146 @@ async def login(
     if not success:
         raise HTTPException(status_code=500, detail=message)
 
-    # Code sent successfully - save to database
-    user.sms_code = code
-    user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+    # Code sent successfully - save to database based on auth method
+    if settings.AUTH_METHOD == "check_call":
+        # Check Call mode: save check_id for webhook verification
+        user.sms_check_id = code
+        user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+        logger.info(f"[API] Check call initiated for {user.phone}, check_id: {code}")
+    else:
+        # SMS/Flash Call mode: save code for manual verification
+        user.sms_code = code
+        user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+
     await db.commit()
 
     return SMSResponse(sent=True)
 
+
+# ============== Check Call Webhook ==============
+
+@router.post("/api/auth/webhook/sms-ru")
+async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_db)):
+    """
+    Webhook endpoint for SMS.ru Check Call notifications.
+
+    Receives automatic notifications from SMS.ru when a user completes a check call.
+    Updates user verification status based on webhook data.
+
+    Expected POST data from SMS.ru:
+        - check_id: Verification ID
+        - status: Call status (401 = verified)
+        - phone: User's phone number (optional, for logging)
+
+    Response format from SMS.ru:
+        {
+            "check_id": "201737-542",
+            "status": "401",  // 401 = verified, 400 = pending, 402 = expired
+            "phone": "79991234567"
+        }
+
+    Args:
+        request: FastAPI request object (for form data)
+        db: AsyncSession database session
+
+    Returns:
+        {"status": "OK"} if webhook processed successfully
+
+    Note:
+        SMS.ru sends this webhook when user completes the check call.
+        Server marks user as verified and clears sms_check_id.
+    """
+    try:
+        # Parse form data from SMS.ru
+        form_data = await request.form()
+        check_id = form_data.get("check_id")
+        status = form_data.get("status")
+        phone = form_data.get("phone", "unknown")
+
+        logger.info(f"[WEBHOOK] Received from SMS.ru: check_id={check_id}, status={status}, phone={phone}")
+
+        if not check_id or not status:
+            logger.warning(f"[WEBHOOK] Missing check_id or status in webhook")
+            return {"status": "error", "message": "Missing required fields"}
+
+        # Check if status indicates successful verification (401 = verified)
+        if status == "401":
+            # Find user by check_id
+            from sqlalchemy import select
+            stmt = select(User).where(User.sms_check_id == check_id)
+            result = await db.execute(stmt)
+            user = result.scalar_one_or_none()
+
+            if user:
+                # Mark user as verified
+                user.is_verified = True
+                user.sms_check_id = None  # Clear check_id after successful verification
+                user.sms_code = None
+                user.sms_code_expires_at = None
+                await db.commit()
+
+                logger.info(f"[WEBHOOK] User {user.phone} verified via check call")
+                return {"status": "OK"}
+            else:
+                logger.warning(f"[WEBHOOK] User not found for check_id: {check_id}")
+                return {"status": "error", "message": "User not found"}
+        else:
+            logger.info(f"[WEBHOOK] Check call status {status} for check_id: {check_id}")
+            return {"status": "OK", "message": f"Status: {status}"}
+
+    except Exception as e:
+        logger.error(f"[WEBHOOK] Error processing webhook: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+@router.get("/api/auth/check-call-status")
+async def check_call_status(
+    phone: str,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Check verification status for Check Call method (polling endpoint).
+
+    Frontend polls this endpoint every 2-3 seconds to detect when
+    the webhook has updated the user's verification status.
+
+    Args:
+        phone: Normalized phone number (+7XXXXXXXXXX)
+        db: AsyncSession database session
+
+    Returns:
+        {
+            "verified": bool,
+            "status": str  # "pending", "verified", "expired"
+        }
+
+    Usage (Frontend):
+        const response = await fetch('/api/auth/check-call-status?phone=+79991234567');
+        const data = await response.json();
+        if (data.verified) {
+            // Redirect to card page
+        }
+    """
+    user = await get_user_by_phone(db, phone)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Check if user is verified
+    if user.is_verified:
+        return {"verified": True, "status": "verified"}
+
+    # Check if check_id exists and not expired
+    if user.sms_check_id and user.sms_code_expires_at:
+        if datetime.utcnow() > user.sms_code_expires_at:
+            return {"verified": False, "status": "expired"}
+        return {"verified": False, "status": "pending"}
+
+    # No active check call
+    return {"verified": False, "status": "none"}
+
+
+# ============== Session API Routes ==============
 
 @router.post("/api/logout")
 async def logout(
