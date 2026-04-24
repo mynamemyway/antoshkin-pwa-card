@@ -582,7 +582,7 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
                                 user.sms_code_expires_at = None
                                 await db.commit()
 
-                                logger.info(f"[WEBHOOK] User {user.phone} verified via check call")
+                                logger.info(f"[WEBHOOK] User verification successful for check_id: {check_id}")
                                 processed = True
                             else:
                                 logger.warning(f"[WEBHOOK] User not found for check_id: {check_id}")
