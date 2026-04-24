@@ -636,6 +636,9 @@ async def check_call_status(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Explicitly load phone to avoid lazy loading issues in async context
+    user_phone = user.phone
+
     # Check if user is verified
     if user.is_verified:
         # Check if there's already an active session for this user
@@ -656,8 +659,6 @@ async def check_call_status(
                 secure=True,
                 samesite="lax"
             )
-            # Load phone before commit to avoid detached state issue
-            user_phone = user.phone
             logger.info(f"[CHECK_CALL] Session created for verified user {user_phone}")
 
         return {"verified": True, "status": "verified", "redirect": f"/card/{phone}"}
