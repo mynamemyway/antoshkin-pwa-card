@@ -518,6 +518,8 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
         Server marks user as verified and clears sms_check_id.
         IMPORTANT: Must return "100" as plain text, not JSON!
     """
+    # Database session
+    db = SessionLocal()
     try:
         # Parse form data from SMS.ru
         form_data = await request.form()
@@ -527,7 +529,6 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
 
         # SMS.ru sends data in data[1], data[2], ... data[100] format
         # Each entry is multi-line text: type\ncheck_id\nstatus\ntimestamp
-        api_id = settings.SMS_API_KEY  # Your API_KEY from SMS.ru
 
         # Process each data entry
         from sqlalchemy import select
@@ -549,10 +550,10 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
 
                     # Handle callcheck_status events
                     if event_type == "callcheck_status":
-                        # Validate hash if present
-                        if 'hash' in form_data:
+                        # Optional: Validate hash if present and SMS_API_KEY is configured
+                        if 'hash' in form_data and hasattr(settings, 'SMS_API_KEY') and settings.SMS_API_KEY:
                             import hashlib
-                            expected_hash = hashlib.sha256((api_id + str(value)).encode()).hexdigest()
+                            expected_hash = hashlib.sha256((settings.SMS_API_KEY + str(value)).encode()).hexdigest()
                             if form_data['hash'] != expected_hash:
                                 logger.warning(f"[WEBHOOK] Hash validation failed")
 
@@ -564,6 +565,9 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
                             user = result.scalar_one_or_none()
 
                             if user:
+                                # Save phone before commit to avoid lazy loading after session close
+                                user_phone = user.phone
+
                                 # Mark user as verified
                                 user.is_verified = True
                                 user.sms_check_id = None  # Clear check_id after successful verification
@@ -571,7 +575,7 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
                                 user.sms_code_expires_at = None
                                 await db.commit()
 
-                                logger.info(f"[WEBHOOK] User {user.phone} verified via check call")
+                                logger.info(f"[WEBHOOK] User {user_phone} verified via check call")
                                 return PlainTextResponse(content="100")
                             else:
                                 logger.warning(f"[WEBHOOK] User not found for check_id: {check_id}")
@@ -588,6 +592,8 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
         logger.error(f"[WEBHOOK] Error processing webhook: {str(e)}", exc_info=True)
         from fastapi.responses import PlainTextResponse
         return PlainTextResponse(content="100")
+    finally:
+        await db.close()
 
 
 @router.post("/api/auth/simulate-call")
