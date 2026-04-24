@@ -496,12 +496,15 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
     Updates user verification status based on webhook data.
 
     Expected POST data from SMS.ru (form-data):
-        - check_id: Verification ID
-        - status: Call status (401 = verified)
-        - phone: User's phone number (optional, for logging)
+        - data[N]: Multi-line text entries
+          Line 1: Event type (callcheck_status)
+          Line 2: check_id
+          Line 3: status (401 = verified)
+          Line 4: unix timestamp
+        - hash: SHA256 hash for validation
 
     Response format from SMS.ru:
-        Check call status sent as form data.
+        Check call status sent as form data in data[1], data[2], ... data[100].
 
     Args:
         request: FastAPI request object (for form data)
@@ -522,51 +525,69 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
         # Log ALL received data for debugging
         logger.info(f"[WEBHOOK] Full SMS.ru data: {dict(form_data)}")
 
-        check_id = form_data.get("check_id")
-        status = form_data.get("status")
-        phone = form_data.get("phone", "unknown")
+        # SMS.ru sends data in data[1], data[2], ... data[100] format
+        # Each entry is multi-line text: type\ncheck_id\nstatus\ntimestamp
+        api_id = settings.sms_api_id  # Your API ID from SMS.ru
 
-        logger.info(f"[WEBHOOK] Received from SMS.ru: check_id={check_id}, status={status}, phone={phone}")
-
-        if not check_id or not status:
-            logger.warning(f"[WEBHOOK] Missing check_id or status in webhook")
-            # Still return 100 to prevent SMS.ru from retrying
-            from fastapi.responses import PlainTextResponse
-            return PlainTextResponse(content="100")
-
-        # Check if status indicates successful verification (401 = verified)
-        if status == "401":
-            # Find user by check_id
-            from sqlalchemy import select
-            stmt = select(User).where(User.sms_check_id == check_id)
-            result = await db.execute(stmt)
-            user = result.scalar_one_or_none()
-
-            if user:
-                # Mark user as verified
-                user.is_verified = True
-                user.sms_check_id = None  # Clear check_id after successful verification
-                user.sms_code = None
-                user.sms_code_expires_at = None
-                await db.commit()
-
-                logger.info(f"[WEBHOOK] User {user.phone} verified via check call")
-                from fastapi.responses import PlainTextResponse
-                return PlainTextResponse(content="100")
-            else:
-                logger.warning(f"[WEBHOOK] User not found for check_id: {check_id}")
-                from fastapi.responses import PlainTextResponse
-                return PlainTextResponse(content="100")
-        else:
-            logger.info(f"[WEBHOOK] Check call status {status} for check_id: {check_id}")
-            from fastapi.responses import PlainTextResponse
-            return PlainTextResponse(content="100")
-
-    except Exception as e:
-        logger.error(f"[WEBHOOK] Error processing webhook: {str(e)}")
+        # Process each data entry
+        from sqlalchemy import select
         from fastapi.responses import PlainTextResponse
+
+        for key, value in form_data.items():
+            if key.startswith('data['):
+                logger.info(f"[WEBHOOK] Processing {key}: {repr(value)}")
+
+                # Split into lines
+                lines = str(value).split('\n')
+
+                if len(lines) >= 3:
+                    event_type = lines[0].strip()
+                    check_id = lines[1].strip()
+                    status = lines[2].strip()
+
+                    logger.info(f"[WEBHOOK] Parsed: type={event_type}, check_id={check_id}, status={status}")
+
+                    # Handle callcheck_status events
+                    if event_type == "callcheck_status":
+                        # Validate hash if present
+                        if 'hash' in form_data:
+                            import hashlib
+                            expected_hash = hashlib.sha256((api_id + str(value)).encode()).hexdigest()
+                            if form_data['hash'] != expected_hash:
+                                logger.warning(f"[WEBHOOK] Hash validation failed")
+
+                        # Check if status indicates successful verification (401 = verified)
+                        if status == "401":
+                            # Find user by check_id
+                            stmt = select(User).where(User.sms_check_id == check_id)
+                            result = await db.execute(stmt)
+                            user = result.scalar_one_or_none()
+
+                            if user:
+                                # Mark user as verified
+                                user.is_verified = True
+                                user.sms_check_id = None  # Clear check_id after successful verification
+                                user.sms_code = None
+                                user.sms_code_expires_at = None
+                                await db.commit()
+
+                                logger.info(f"[WEBHOOK] User {user.phone} verified via check call")
+                                return PlainTextResponse(content="100")
+                            else:
+                                logger.warning(f"[WEBHOOK] User not found for check_id: {check_id}")
+                                return PlainTextResponse(content="100")
+                        else:
+                            logger.info(f"[WEBHOOK] Check call status {status} for check_id: {check_id}")
+                            return PlainTextResponse(content="100")
+
+        # No valid data entries found
+        logger.warning(f"[WEBHOOK] No valid data entries found in webhook")
         return PlainTextResponse(content="100")
 
+    except Exception as e:
+        logger.error(f"[WEBHOOK] Error processing webhook: {str(e)}", exc_info=True)
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(content="100")
 
 
 @router.post("/api/auth/simulate-call")
