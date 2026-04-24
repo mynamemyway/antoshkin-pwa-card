@@ -62,6 +62,15 @@
                     </p>
                 </div>
 
+                <!-- Phone to Call Display (shown after initiation) -->
+                <div id="callPhoneDisplay" class="hidden text-center">
+                    <p class="text-sm text-gray-600 mb-2">Наберите номер:</p>
+                    <a id="callPhoneLink" href="#" class="text-2xl font-bold text-primary hover:text-primary-dark">
+                        +7 (800) 500-8275
+                    </a>
+                    <p class="text-xs text-gray-500 mt-2">После соединения автоматическая проверка займёт несколько секунд</p>
+                </div>
+
                 <!-- Waiting Status -->
                 <div id="waitingStatus" class="hidden text-center">
                     <div class="flex justify-center mb-4">
@@ -267,8 +276,8 @@
         // Initialize based on auth method
         const authMethod = "{{ auth_method }}";
         if (authMethod === 'check_call') {
-            // Check Call mode: start polling for verification status immediately
-            startStatusPolling();
+            // Check Call mode: do NOT start polling yet - wait for user to click call button
+            // Polling will be started in initiateCall() after successful API request
         } else {
             // SMS/Flash Call mode: check session, then start timer
             checkSession('verify');
@@ -287,6 +296,8 @@
         const errorMessage = document.getElementById('errorMessage');
         const errorText = document.getElementById('errorText');
         const retryContainer = document.getElementById('retryContainer');
+        const callPhoneDisplay = document.getElementById('callPhoneDisplay');
+        const callPhoneLink = document.getElementById('callPhoneLink');
         const phone = document.getElementById('phone').value;
 
         // Hide error messages
@@ -319,7 +330,16 @@
             // Success - update UI to show waiting state
             callButton.style.display = 'none';
 
-            // Start polling for verification status
+            // Show phone number to call (from API response or default)
+            // Note: In test mode, API returns actual call_phone from SMS.ru
+            if (data.call_phone) {
+                const formattedPhone = formatPhone(data.call_phone);
+                callPhoneLink.textContent = formattedPhone;
+                callPhoneLink.href = `tel:${data.call_phone}`;
+            }
+            callPhoneDisplay.classList.remove('hidden');
+
+            // Start polling for verification status AFTER initiation
             startStatusPolling();
 
         } catch (error) {

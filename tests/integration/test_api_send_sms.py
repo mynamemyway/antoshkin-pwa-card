@@ -64,14 +64,23 @@ class TestApiSendSms:
 
         assert response.status_code == 200
 
-        # Verify code is saved in database
+        # Verify verification data is saved in database
         result = await db.execute(select(User).where(User.phone == test_user.phone))
         user = result.scalar_one_or_none()
-        assert user.sms_code is not None
-        assert user.sms_code_expires_at is not None
-        # Check expiration is ~5 minutes from now
-        expected_expires = datetime.utcnow() + timedelta(minutes=5)
-        assert abs((user.sms_code_expires_at - expected_expires).total_seconds()) < 10
+
+        # For check_call mode: user should be verified (test mode auto-verifies)
+        from app.config import settings
+        if settings.AUTH_METHOD == "check_call":
+            # In check_call test mode, user is immediately verified after initiation
+            # sms_check_id and sms_code_expires_at are cleared after verification
+            assert user.is_verified is True
+        else:
+            # For SMS/Flash Call mode: sms_code should be set
+            assert user.sms_code is not None
+            assert user.sms_code_expires_at is not None
+            # Check expiration is ~5 minutes from now
+            expected_expires = datetime.utcnow() + timedelta(minutes=5)
+            assert abs((user.sms_code_expires_at - expected_expires).total_seconds()) < 10
 
     def test_send_sms_invalid_phone(self, client, test_user):
         """B.2.6: Отправка с неверным телефоном."""

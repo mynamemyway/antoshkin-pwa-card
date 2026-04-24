@@ -314,7 +314,7 @@ async def send_sms_endpoint(sms_data: SMSRequest, request: Request, db: AsyncSes
 
     # Handle Check Call mode with service function
     if settings.AUTH_METHOD == "check_call":
-        success, check_id, message = await initiate_check_call(db, user, user.phone)
+        success, check_id, message, call_phone = await initiate_check_call(db, user, user.phone)
 
         if not success:
             raise HTTPException(status_code=500, detail=message)
@@ -450,15 +450,13 @@ async def login(
 
     # Handle Check Call mode with service function
     if settings.AUTH_METHOD == "check_call":
-        success, check_id, message = await initiate_check_call(db, user, user.phone)
+        success, check_id, message, call_phone = await initiate_check_call(db, user, user.phone)
 
         if not success:
             raise HTTPException(status_code=500, detail=message)
 
         logger.info(f"[API] Check call initiated for {user.phone}, check_id: {check_id}")
-        # Service already commits after verification in test mode
-        if not settings.SMS_TEST_MODE:
-            await db.commit()
+        await db.commit()
         return SMSResponse(sent=True)
 
     # SMS/Flash Call mode: use dispatcher service
