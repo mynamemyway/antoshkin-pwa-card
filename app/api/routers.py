@@ -106,7 +106,9 @@ async def verify_page(request: Request):
     return request.state.templates.TemplateResponse("verify.html", {
         "request": request,
         "auth_method": settings.AUTH_METHOD,
-        "sms_test_mode": settings.SMS_TEST_MODE
+        "sms_test_mode": settings.SMS_TEST_MODE,
+        # Номер телефона для звонка будет получен из localStorage (сохранён после /api/auth/initiate)
+        "call_phone": None,
     })
 
 
