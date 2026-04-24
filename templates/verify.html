@@ -259,7 +259,7 @@
 
     // Global auth method variable (accessible to all functions)
     const authMethod = "{{ auth_method }}";
-    const smsTestMode = "{{ sms_test_mode}}";
+    const smsTestMode = {{ sms_test_mode|tojson }};
     const callPhoneGlobal = "{{ call_phone }}";
 
     // Initialize page

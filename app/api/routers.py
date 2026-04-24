@@ -564,7 +564,8 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
 @router.post("/api/auth/simulate-call")
 async def simulate_call_endpoint(
     sms_data: SMSRequest,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    response: Response = None
 ):
     """
     Симуляция входящего звонка в тестовом режиме (SMS_TEST_MODE=True).
@@ -575,9 +576,10 @@ async def simulate_call_endpoint(
     Args:
         sms_data: Phone number
         db: AsyncSession database session
+        response: FastAPI response object (for setting cookie)
 
     Returns:
-        {"success": true, "message": "OK"} если симуляция успешна
+        {"success": true, "message": "OK", "verified": true, "redirect": "/card/{phone}"} если симуляция успешна
 
     Raises:
         HTTPException: 400 если не тестовый режим или нет активного check_id
@@ -599,10 +601,33 @@ async def simulate_call_endpoint(
     if not success:
         raise HTTPException(status_code=400, detail=message)
 
+    # Сохраняем user.id ДО коммита, чтобы избежать lazy loading после commit
+    user_id = user.id
+    user_phone = user.phone
+
     await db.commit()
 
-    logger.info(f"[SIMULATE] User {sms_data.phone} verified successfully (simulated)")
-    return {"success": True, "message": "OK"}
+    logger.info(f"[SIMULATE] User {user_phone} verified successfully (simulated), creating session")
+
+    # Create session and set cookie
+    token = await create_session(db, user_id)
+    if response:
+        response.set_cookie(
+            key=COOKIE_NAME,
+            value=token,
+            max_age=COOKIE_MAX_AGE,
+            path=COOKIE_PATH,
+            httponly=True,
+            secure=True,
+            samesite="lax"
+        )
+
+    return {
+        "success": True,
+        "message": "OK",
+        "verified": True,
+        "redirect": f"/card/{sms_data.phone}"
+    }
 
 
 @router.get("/api/auth/check-call-status")
