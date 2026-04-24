@@ -495,32 +495,33 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
     Receives automatic notifications from SMS.ru when a user completes a check call.
     Updates user verification status based on webhook data.
 
-    Expected POST data from SMS.ru:
+    Expected POST data from SMS.ru (form-data):
         - check_id: Verification ID
         - status: Call status (401 = verified)
         - phone: User's phone number (optional, for logging)
 
     Response format from SMS.ru:
-        {
-            "check_id": "201737-542",
-            "status": "401",  // 401 = verified, 400 = pending, 402 = expired
-            "phone": "79991234567"
-        }
+        Check call status sent as form data.
 
     Args:
         request: FastAPI request object (for form data)
         db: AsyncSession database session
 
     Returns:
-        {"status": "OK"} if webhook processed successfully
+        Plain text "100" to confirm successful processing (SMS.ru requirement)
 
     Note:
         SMS.ru sends this webhook when user completes the check call.
         Server marks user as verified and clears sms_check_id.
+        IMPORTANT: Must return "100" as plain text, not JSON!
     """
     try:
         # Parse form data from SMS.ru
         form_data = await request.form()
+
+        # Log ALL received data for debugging
+        logger.info(f"[WEBHOOK] Full SMS.ru data: {dict(form_data)}")
+
         check_id = form_data.get("check_id")
         status = form_data.get("status")
         phone = form_data.get("phone", "unknown")
@@ -529,7 +530,9 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
 
         if not check_id or not status:
             logger.warning(f"[WEBHOOK] Missing check_id or status in webhook")
-            return {"status": "error", "message": "Missing required fields"}
+            # Still return 100 to prevent SMS.ru from retrying
+            from fastapi.responses import PlainTextResponse
+            return PlainTextResponse(content="100")
 
         # Check if status indicates successful verification (401 = verified)
         if status == "401":
@@ -548,17 +551,22 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
                 await db.commit()
 
                 logger.info(f"[WEBHOOK] User {user.phone} verified via check call")
-                return {"status": "OK"}
+                from fastapi.responses import PlainTextResponse
+                return PlainTextResponse(content="100")
             else:
                 logger.warning(f"[WEBHOOK] User not found for check_id: {check_id}")
-                return {"status": "error", "message": "User not found"}
+                from fastapi.responses import PlainTextResponse
+                return PlainTextResponse(content="100")
         else:
             logger.info(f"[WEBHOOK] Check call status {status} for check_id: {check_id}")
-            return {"status": "OK", "message": f"Status: {status}"}
+            from fastapi.responses import PlainTextResponse
+            return PlainTextResponse(content="100")
 
     except Exception as e:
         logger.error(f"[WEBHOOK] Error processing webhook: {str(e)}")
-        return {"status": "error", "message": str(e)}
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(content="100")
+
 
 
 @router.post("/api/auth/simulate-call")
