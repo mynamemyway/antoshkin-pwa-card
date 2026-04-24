@@ -259,6 +259,8 @@
 
     // Global auth method variable (accessible to all functions)
     const authMethod = "{{ auth_method }}";
+    const smsTestMode = "{{ sms_test_mode}}";
+    const callPhoneGlobal = "{{ call_phone }}";
 
     // Initialize page
     document.addEventListener('DOMContentLoaded', function() {
@@ -278,7 +280,21 @@
 
         // Initialize based on auth method
         if (authMethod === 'check_call') {
-            // Check Call mode: do NOT start polling yet - wait for user to click call button
+            // Check Call mode: get call_phone from localStorage (saved after /api/auth/initiate)
+            const storedCallPhone = localStorage.getItem('call_phone');
+
+            if (storedCallPhone) {
+                // Display the phone number to call immediately
+                const callPhoneDisplay = document.getElementById('callPhoneDisplay');
+                const callPhoneLink = document.getElementById('callPhoneLink');
+
+                const formattedPhone = formatPhone(storedCallPhone);
+                callPhoneLink.textContent = formattedPhone;
+                callPhoneLink.href = `tel:${storedCallPhone}`;
+                callPhoneDisplay.classList.remove('hidden');
+            }
+
+            // Do NOT start polling yet - wait for user to click call button
             // Polling will be started in initiateCall() after successful API request
         } else {
             // SMS/Flash Call mode: check session, then start timer
@@ -312,39 +328,47 @@
         waitingStatus.classList.remove('hidden');
 
         try {
-            // Step 1: Simulate incoming call (test mode only)
-            // This endpoint emulates the webhook from SMS.ru when user clicks "Call" button
-            const response = await fetch('/api/auth/simulate-call', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    phone: phone
-                })
-            });
+            if (smsTestMode === true) {
+                // Test mode: simulate incoming call for instant verification
+                const response = await fetch('/api/auth/simulate-call', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        phone: phone
+                    })
+                });
 
-            const data = await response.json();
+                const data = await response.json();
 
-            if (!response.ok) {
-                throw new Error(data.detail || 'Ошибка инициализации звонка');
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Ошибка инициализации звонка');
+                }
+
+                // Success - instant verification in test mode, redirect immediately
+                localStorage.setItem('phone', phone);
+                window.location.replace(`/card/${encodeURIComponent(phone)}`);
+
+            } else {
+                // Production mode: trigger actual phone call, then start polling
+                // Get the phone number to call from localStorage
+                const numberToCall = localStorage.getItem('call_phone');
+
+                if (!numberToCall) {
+                    throw new Error('Номер для звонка не найден. Попробуйте начать заново.');
+                }
+
+                // Trigger the phone call immediately
+                window.location.href = `tel:${numberToCall}`;
+
+                // Hide the call button and show waiting status
+                callButton.style.display = 'none';
+                callPhoneDisplay.classList.remove('hidden');
+
+                // Start polling for verification status after user makes the call
+                startStatusPolling();
             }
-
-            // Success - update UI to show waiting state
-            callButton.style.display = 'none';
-
-            // Show phone number to call (from API response or default)
-            if (data.call_phone) {
-                const formattedPhone = formatPhone(data.call_phone);
-                callPhoneLink.textContent = formattedPhone;
-                callPhoneLink.href = `tel:${data.call_phone}`;
-            }
-            callPhoneDisplay.classList.remove('hidden');
-
-            // Step 2: Start polling for verification status
-            // In test mode, backend already simulated the call, so polling will detect success immediately
-            // In production, webhook from SMS.ru will update the status
-            startStatusPolling();
 
         } catch (error) {
             // Show error message
