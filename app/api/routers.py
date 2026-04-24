@@ -456,7 +456,9 @@ async def login(
             raise HTTPException(status_code=500, detail=message)
 
         logger.info(f"[API] Check call initiated for {user.phone}, check_id: {check_id}")
-        await db.commit()
+        # Service already commits after verification in test mode
+        if not settings.SMS_TEST_MODE:
+            await db.commit()
         return SMSResponse(sent=True)
 
     # SMS/Flash Call mode: use dispatcher service
