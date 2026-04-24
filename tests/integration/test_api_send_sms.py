@@ -16,9 +16,17 @@ class TestApiSendSms:
 
     def test_send_sms_success(self, client, test_user, mock_sms_success):
         """B.2.1: Успешная отправка SMS."""
-        response = client.post("/api/send-sms", json={
-            "phone": test_user.phone
-        })
+        from app.config import settings
+
+        # For check_call mode, use universal endpoint
+        if settings.AUTH_METHOD == "check_call":
+            response = client.post("/api/auth/initiate", json={
+                "phone": test_user.phone
+            })
+        else:
+            response = client.post("/api/send-sms", json={
+                "phone": test_user.phone
+            })
 
         assert response.status_code == 200
         data = response.json()
@@ -34,11 +42,18 @@ class TestApiSendSms:
 
     def test_send_sms_test_mode(self, client, test_user, monkeypatch):
         """B.2.3: Отправка в тестовом режиме."""
-        monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', True)
+        from app.config import settings
 
-        response = client.post("/api/send-sms", json={
-            "phone": test_user.phone
-        })
+        # For check_call mode, use universal endpoint
+        if settings.AUTH_METHOD == "check_call":
+            response = client.post("/api/auth/initiate", json={
+                "phone": test_user.phone
+            })
+        else:
+            monkeypatch.setattr('app.services.sms_service.settings.SMS_TEST_MODE', True)
+            response = client.post("/api/send-sms", json={
+                "phone": test_user.phone
+            })
 
         assert response.status_code == 200
         data = response.json()
@@ -46,34 +61,51 @@ class TestApiSendSms:
 
     def test_send_sms_verified_user(self, client, test_user, mock_sms_success):
         """B.2.4: Отправка верифицированному пользователю."""
+        from app.config import settings
+
         # test_user is already verified
-        response = client.post("/api/send-sms", json={
-            "phone": test_user.phone
-        })
+        # For check_call mode, use universal endpoint
+        if settings.AUTH_METHOD == "check_call":
+            response = client.post("/api/auth/initiate", json={
+                "phone": test_user.phone
+            })
+        else:
+            response = client.post("/api/send-sms", json={
+                "phone": test_user.phone
+            })
 
         assert response.status_code == 200
         data = response.json()
         assert data["sent"] is True
 
     @pytest.mark.asyncio
-    async def test_send_sms_code_saved(self, client, test_user, mock_sms_success, db):
+    async def test_send_sms_code_saved(self, client, test_user_unverified, mock_sms_success, db):
         """B.2.5: Проверка сохранения кода в БД."""
-        response = client.post("/api/send-sms", json={
-            "phone": test_user.phone
-        })
+        from app.config import settings
+
+        # Используем test_user_unverified чтобы проверить что is_verified=False после initiate
+        # For check_call mode, use universal endpoint
+        if settings.AUTH_METHOD == "check_call":
+            response = client.post("/api/auth/initiate", json={
+                "phone": test_user_unverified.phone
+            })
+        else:
+            response = client.post("/api/send-sms", json={
+                "phone": test_user_unverified.phone
+            })
 
         assert response.status_code == 200
 
         # Verify verification data is saved in database
-        result = await db.execute(select(User).where(User.phone == test_user.phone))
+        result = await db.execute(select(User).where(User.phone == test_user_unverified.phone))
         user = result.scalar_one_or_none()
 
-        # For check_call mode: user should be verified (test mode auto-verifies)
-        from app.config import settings
+        # For check_call mode: user should have sms_check_id saved (NOT verified yet)
+        # Verification happens only after simulate-call endpoint is invoked
         if settings.AUTH_METHOD == "check_call":
-            # In check_call test mode, user is immediately verified after initiation
-            # sms_check_id and sms_code_expires_at are cleared after verification
-            assert user.is_verified is True
+            # In check_call mode, initiation saves sms_check_id but does NOT verify
+            assert user.sms_check_id is not None, "sms_check_id should be saved after initiate"
+            assert user.is_verified is False, "User should NOT be verified until simulate-call is called"
         else:
             # For SMS/Flash Call mode: sms_code should be set
             assert user.sms_code is not None
