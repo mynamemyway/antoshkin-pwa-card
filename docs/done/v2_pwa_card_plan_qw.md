@@ -289,6 +289,7 @@ Cтандартный цикл обновления любого Docker-прое
 1. **Перейди в папку проекта на сервере:**
 ```bash
 cd ~/projects/antoshkin-pwa-card
+cd projects/antoshkin-pwa-card
 ```
 
 2. **Затяни изменения из GitHub:**

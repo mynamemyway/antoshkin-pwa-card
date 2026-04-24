@@ -395,7 +395,15 @@ async def verify_code(
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
     # Verify SMS code using service function
-    success, message = await verify_sms_code(db, user, verify_data.code)
+    result = await verify_sms_code(db, user, verify_data.code)
+
+    # Unpack result (now includes user_id)
+    if len(result) == 3:
+        success, message, user_id = result
+    else:
+        # Fallback for backward compatibility (should not happen)
+        success, message = result
+        user_id = user.id
 
     if not success:
         # Map service messages to HTTP status codes
@@ -406,10 +414,7 @@ async def verify_code(
         else:
             raise HTTPException(status_code=400, detail=message)
 
-    # Save user_id BEFORE commit (user becomes expired after commit in async)
-    user_id = user.id
-
-    # Create session and set cookie
+    # Create session and set cookie using saved user_id
     token = await create_session(db, user_id)
 
     # Set HttpOnly cookie
@@ -614,6 +619,11 @@ async def check_call_status(
 
     If user is verified and no session exists, creates a new session and sets cookie.
 
+    IMPORTANT: This endpoint ONLY checks the status of the active sms_check_id.
+    It does NOT check user.is_verified flag to prevent bypassing the call verification.
+    Even if user.is_verified=True from a previous session, we must wait for the
+    webhook to confirm the NEW call before creating a session.
+
     Args:
         phone: Normalized phone number (+7XXXXXXXXXX)
         db: AsyncSession database session
@@ -641,9 +651,35 @@ async def check_call_status(
     # Explicitly load phone to avoid lazy loading issues in async context
     user_phone = user.phone
 
-    # Check if user is verified
-    if user.is_verified:
-        # Check if there's already an active session for this user
+    # CRITICAL: Do NOT check user.is_verified here!
+    # We must only verify based on the current sms_check_id status.
+    # The webhook is the only source of truth for call verification.
+    # This prevents bypassing the call by having is_verified=True from a previous session.
+
+    # Check if there's an active sms_check_id
+    if not user.sms_check_id:
+        # No active check call session
+        return {"verified": False, "status": "none"}
+
+    # Check if check_id is expired
+    if user.sms_code_expires_at:
+        if datetime.utcnow() > user.sms_code_expires_at:
+            return {"verified": False, "status": "expired"}
+
+    # Check if user was verified by webhook (is_verified=True AND sms_check_id was cleared)
+    # But since we're still checking status, sms_check_id should still be present until webhook clears it
+    # The webhook sets is_verified=True AND clears sms_check_id
+    # So if is_verified=True but sms_check_id is still set, we're still waiting for webhook confirmation
+
+    # Actually, the webhook flow is:
+    # 1. User initiates call -> sms_check_id is set
+    # 2. User calls -> SMS.ru sends webhook with status=401
+    # 3. Webhook handler sets is_verified=True AND clears sms_check_id
+    # 4. Polling detects is_verified=True with no sms_check_id -> success
+
+    # So we need to check: is_verified=True means webhook confirmed the call
+    if user.is_verified and not user.sms_check_id:
+        # Webhook has confirmed the call - create session if needed
         from sqlalchemy import select
         stmt = select(Session).where(Session.user_id == user.id)
         result = await db.execute(stmt)
@@ -665,14 +701,8 @@ async def check_call_status(
 
         return {"verified": True, "status": "verified", "redirect": f"/card/{phone}"}
 
-    # Check if check_id exists and not expired
-    if user.sms_check_id and user.sms_code_expires_at:
-        if datetime.utcnow() > user.sms_code_expires_at:
-            return {"verified": False, "status": "expired"}
-        return {"verified": False, "status": "pending"}
-
-    # No active check call
-    return {"verified": False, "status": "none"}
+    # Still waiting for webhook confirmation (sms_check_id exists, is_verified may be old value)
+    return {"verified": False, "status": "pending"}
 
 
 @router.post("/api/auth/simulate-check-call")
