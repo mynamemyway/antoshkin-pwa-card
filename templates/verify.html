@@ -257,6 +257,9 @@
     let pollingInterval;
     let callPhone = '';
 
+    // Global auth method variable (accessible to all functions)
+    const authMethod = "{{ auth_method }}";
+
     // Initialize page
     document.addEventListener('DOMContentLoaded', function() {
         // Get phone from URL query parameter FIRST (before any session check)
@@ -274,7 +277,6 @@
         document.getElementById('phoneDisplay').textContent = formatPhone(phone);
 
         // Initialize based on auth method
-        const authMethod = "{{ auth_method }}";
         if (authMethod === 'check_call') {
             // Check Call mode: do NOT start polling yet - wait for user to click call button
             // Polling will be started in initiateCall() after successful API request
@@ -310,8 +312,9 @@
         waitingStatus.classList.remove('hidden');
 
         try {
-            // Send request to initiate check call
-            const response = await fetch('/api/send-sms', {
+            // Step 1: Send request to initiate check call (get check_id from SMS.ru)
+            // In test mode, this also auto-simulates the call completion
+            const response = await fetch('/api/auth/check-call/initiate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -331,7 +334,6 @@
             callButton.style.display = 'none';
 
             // Show phone number to call (from API response or default)
-            // Note: In test mode, API returns actual call_phone from SMS.ru
             if (data.call_phone) {
                 const formattedPhone = formatPhone(data.call_phone);
                 callPhoneLink.textContent = formattedPhone;
@@ -339,7 +341,9 @@
             }
             callPhoneDisplay.classList.remove('hidden');
 
-            // Start polling for verification status AFTER initiation
+            // Step 2: Start polling for verification status
+            // In test mode, backend already simulated the call, so polling will detect success immediately
+            // In production, webhook from SMS.ru will update the status
             startStatusPolling();
 
         } catch (error) {

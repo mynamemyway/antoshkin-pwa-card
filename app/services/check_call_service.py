@@ -48,7 +48,7 @@ async def initiate_check_call(
         In test mode (SMS_TEST_MODE=True):
         - Makes real request to SMS.ru to get actual check_id
         - Saves check_id to user.sms_check_id (does NOT commit)
-        - Does NOT auto-verify — webhook simulation handled separately
+        - Does NOT auto-verify — webhook simulation handled separately via /api/auth/simulate-check-call
         - Caller must commit the session
 
         In production:
@@ -78,7 +78,8 @@ async def initiate_check_call(
     """
     from datetime import timedelta
 
-    # Test mode: make REAL request to SMS.ru but simulate webhook locally
+    # Test mode: make REAL request to SMS.ru to get actual check_id
+    # Does NOT auto-verify — simulation is done via separate endpoint
     if settings.SMS_TEST_MODE:
         logger.info(f"[CHECK_CALL] Initiated for {phone} (test mode with real API)")
 
@@ -103,16 +104,12 @@ async def initiate_check_call(
                     print(f"[CHECK_CALL] SMS.ru response (test mode): {data}")
 
                     # Save real check_id and expiration (DO NOT commit here)
+                    # Do NOT auto-verify — wait for simulate_check_call endpoint
                     user.sms_check_id = real_check_id
                     user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+                    # is_verified remains False until simulate_check_call is invoked
 
-                    # Simulate webhook: mark as verified immediately (for local testing)
-                    # This emulates what the webhook would do after user "makes a call"
-                    user.is_verified = True
-                    user.sms_check_id = None
-                    user.sms_code_expires_at = None
-
-                    logger.info(f"[CHECK_CALL] Test mode: User {user.phone} auto-verified (simulated webhook)")
+                    logger.info(f"[CHECK_CALL] Test mode: check_id saved for {user.phone}, waiting for call simulation")
                     return True, real_check_id, "Check call initiated (test mode)", call_phone
                 else:
                     error_msg = data.get("status_text", "Unknown error")
@@ -272,3 +269,50 @@ async def verify_check_call_status(check_id: str) -> Tuple[bool, str, str]:
         error_msg = "JSON parse error"
         logger.error(f"[CHECK_CALL] JSON parse error for {check_id}: {str(e)}")
         return False, "", f"Response error: {error_msg}"
+
+
+async def simulate_incoming_call(
+    db: AsyncSession,
+    user: User
+) -> Tuple[bool, str]:
+    """
+    Simulate incoming check call webhook in test mode.
+
+    This function emulates what SMS.ru webhook does when user completes a check call.
+    Should be called ONLY in test mode (SMS_TEST_MODE=True) after user clicks "Позвонить".
+
+    Args:
+        db: AsyncSession database session
+        user: User object to update
+
+    Returns:
+        Tuple of (success: bool, message: str)
+
+    Logic:
+        - Checks if user has sms_check_id set
+        - Marks user as verified (is_verified=True)
+        - Clears sms_check_id and expiration
+        - Does NOT commit — caller must commit the session
+
+    Usage:
+        success, message = await simulate_incoming_call(db, user)
+        if success:
+            await db.commit()
+    """
+    if not settings.SMS_TEST_MODE:
+        logger.error("[SIMULATE] Cannot simulate call in production mode")
+        return False, "Simulation only available in test mode"
+
+    if not user.sms_check_id:
+        logger.warning(f"[SIMULATE] No sms_check_id found for {user.phone}")
+        return False, "No active check call found"
+
+    # Emulate webhook: mark user as verified
+    logger.info(f"[SIMULATE] Simulating incoming call for {user.phone}, check_id: {user.sms_check_id}")
+
+    user.is_verified = True
+    user.sms_check_id = None
+    user.sms_code_expires_at = None
+
+    logger.info(f"[SIMULATE] User {user.phone} verified successfully (simulated)")
+    return True, "Call simulated successfully"

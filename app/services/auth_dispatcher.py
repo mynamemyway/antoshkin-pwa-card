@@ -77,6 +77,10 @@ async def send_verification_code(
         - If AUTH_METHOD = "call": API generates code, returns it in response
         - If AUTH_METHOD = "check_call": API returns check_id and call_phone
 
+    Note:
+        This function is used ONLY for SMS and Flash Call methods.
+        Check Call uses a dedicated endpoint /api/auth/check-call/initiate.
+
     Usage:
         success, code, message = await send_verification_code(
             "+79991234567", request
@@ -93,11 +97,10 @@ async def send_verification_code(
         logger.info(f"[DISPATCHER] Using Flash Call for {phone}")
         return await send_flash_call(phone, ip)
     elif settings.AUTH_METHOD == "check_call":
-        # Check Call mode: user makes call to verify
-        logger.info(f"[DISPATCHER] Using Check Call for {phone}")
-        success, check_id, call_phone, message = await initiate_check_call(phone)
-        # Return check_id as "code" for compatibility (will be stored in sms_check_id)
-        return success, check_id, message
+        # Check Call mode: should use dedicated endpoint, not this dispatcher
+        # Return error to indicate incorrect usage
+        logger.error(f"[DISPATCHER] Check Call should use /api/auth/check-call/initiate, not send_verification_code")
+        return False, "", "Check Call requires dedicated endpoint"
     else:
         # SMS mode (default): generate code locally and send via SMS
         logger.info(f"[DISPATCHER] Using SMS for {phone}")

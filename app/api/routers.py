@@ -42,7 +42,7 @@ from app.services.crud import (
 )
 from app.services.auth_dispatcher import send_verification_code
 from app.services.sms_service import verify_sms_code
-from app.services.check_call_service import verify_check_call_status, initiate_check_call
+from app.services.check_call_service import verify_check_call_status, initiate_check_call, simulate_incoming_call
 from app.services.session_service import (
     create_session,
     get_session_by_token,
@@ -70,7 +70,11 @@ async def root(request: Request):
     Returns:
         Rendered HTML template for the registration page
     """
-    return request.state.templates.TemplateResponse("index.html", {"request": request})
+    from app.config import settings
+    return request.state.templates.TemplateResponse("index.html", {
+        "request": request,
+        "auth_method": settings.AUTH_METHOD
+    })
 
 
 @router.get("/splash", response_class=HTMLResponse)
@@ -101,7 +105,8 @@ async def verify_page(request: Request):
     from app.config import settings
     return request.state.templates.TemplateResponse("verify.html", {
         "request": request,
-        "auth_method": settings.AUTH_METHOD
+        "auth_method": settings.AUTH_METHOD,
+        "sms_test_mode": settings.SMS_TEST_MODE
     })
 
 
@@ -286,10 +291,16 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_async_d
         raise HTTPException(status_code=500, detail="Failed to create user")
 
 
-@router.post("/api/send-sms", response_model=SMSResponse)
-async def send_sms_endpoint(sms_data: SMSRequest, request: Request, db: AsyncSession = Depends(get_async_db)):
+@router.post("/api/auth/initiate", response_model=SMSResponse)
+async def initiate_auth_endpoint(
+    sms_data: SMSRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_async_db)
+):
     """
-    Send verification code to user (SMS, Flash Call, or Check Call).
+    Универсальный эндпоинт для инициации любой авторизации (SMS, Flash Call, Check Call).
+
+    Автоматически выбирает метод на основе AUTH_METHOD в конфиге.
 
     Args:
         sms_data: Phone number for verification
@@ -297,31 +308,38 @@ async def send_sms_endpoint(sms_data: SMSRequest, request: Request, db: AsyncSes
         db: AsyncSession database session
 
     Returns:
-        {"sent": true} if verification was initiated successfully
+        {
+            "sent": true,
+            "call_phone": str (только для check_call)
+        }
 
     Raises:
-        HTTPException: If user not found or verification initiation failed
+        HTTPException: If user not found or initiation failed
 
     Note:
-        For check_call method: saves check_id to sms_check_id field
-        For SMS/Flash Call: saves code to sms_code field
-        In test mode for check_call: immediately marks user as verified
+        - Для check_call: делает запрос к SMS.ru, сохраняет check_id, НЕ верифицирует
+        - Для SMS/Flash Call: отправляет код пользователю
+        - В тестовом режиме check_call НЕ делает автосимуляцию - это делается через /api/auth/simulate-call
     """
     user = await get_user_by_phone(db, sms_data.phone)
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Handle Check Call mode with service function
+    # Handle Check Call mode
     if settings.AUTH_METHOD == "check_call":
         success, check_id, message, call_phone = await initiate_check_call(db, user, user.phone)
 
         if not success:
             raise HTTPException(status_code=500, detail=message)
 
+        # ВАЖНО: В тестовом режиме НЕ делаем автосимуляцию!
+        # Симуляция вызывается отдельно через /api/auth/simulate-call когда пользователь нажмёт "Позвонить"
         logger.info(f"[API] Check call initiated for {user.phone}, check_id: {check_id}")
         await db.commit()
-        return SMSResponse(sent=True)
+
+        # Возвращаем call_phone для фронтенда
+        return SMSResponse(sent=True, call_phone=call_phone)
 
     # SMS/Flash Call mode: use dispatcher service
     success, code, message = await send_verification_code(user.phone, request)
@@ -336,6 +354,13 @@ async def send_sms_endpoint(sms_data: SMSRequest, request: Request, db: AsyncSes
     await db.commit()
 
     return SMSResponse(sent=True)
+
+
+# Оставляем старый путь для обратной совместимости (redirect)
+@router.post("/api/send-sms", response_model=SMSResponse, deprecated=True)
+async def send_sms_endpoint_deprecated(sms_data: SMSRequest, request: Request, db: AsyncSession = Depends(get_async_db)):
+    """Deprecated: используйте /api/auth/initiate вместо этого."""
+    return await initiate_auth_endpoint(sms_data, request, db)
 
 
 @router.post("/api/verify", response_model=VerifyResponse)
@@ -448,30 +473,9 @@ async def login(
         # User not found - frontend should trigger registration
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Handle Check Call mode with service function
-    if settings.AUTH_METHOD == "check_call":
-        success, check_id, message, call_phone = await initiate_check_call(db, user, user.phone)
-
-        if not success:
-            raise HTTPException(status_code=500, detail=message)
-
-        logger.info(f"[API] Check call initiated for {user.phone}, check_id: {check_id}")
-        await db.commit()
-        return SMSResponse(sent=True)
-
-    # SMS/Flash Call mode: use dispatcher service
-    success, code, message = await send_verification_code(user.phone, request)
-
-    if not success:
-        raise HTTPException(status_code=500, detail=message)
-
-    # Code sent successfully - save to database
-    user.sms_code = code
-    user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
-
-    await db.commit()
-
-    return SMSResponse(sent=True)
+    # Используем универсальный эндпоинт /api/auth/initiate для всех методов
+    # Для check_call это инициирует звонок, для SMS/Flash Call - отправит код
+    return await initiate_auth_endpoint(sms_data, request, db)
 
 
 # ============== Check Call Webhook ==============
@@ -550,6 +554,52 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
         return {"status": "error", "message": str(e)}
 
 
+@router.post("/api/auth/simulate-call")
+async def simulate_call_endpoint(
+    sms_data: SMSRequest,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Симуляция входящего звонка в тестовом режиме (SMS_TEST_MODE=True).
+
+    Этот эндпоинт вызывается когда пользователь нажимает кнопку "Позвонить" на фронтенде.
+    Он эмулирует webhook от SMS.ru: находит пользователя по sms_check_id и верифицирует его.
+
+    Args:
+        sms_data: Phone number
+        db: AsyncSession database session
+
+    Returns:
+        {"success": true, "message": "OK"} если симуляция успешна
+
+    Raises:
+        HTTPException: 400 если не тестовый режим или нет активного check_id
+    """
+    if not settings.SMS_TEST_MODE:
+        raise HTTPException(status_code=400, detail="Simulation only available in test mode")
+
+    user = await get_user_by_phone(db, sms_data.phone)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not user.sms_check_id:
+        raise HTTPException(status_code=400, detail="No active check session. Please initiate call first.")
+
+    # Эмулируем webhook: верифицируем пользователя
+    logger.info(f"[SIMULATE] Simulating incoming call for {user.phone}, check_id: {user.sms_check_id}")
+
+    user.is_verified = True
+    old_check_id = user.sms_check_id
+    user.sms_check_id = None
+    user.sms_code_expires_at = None
+
+    await db.commit()
+
+    logger.info(f"[SIMULATE] User {user.phone} verified successfully (simulated). Old check_id: {old_check_id}")
+    return {"success": True, "message": "OK"}
+
+
 @router.get("/api/auth/check-call-status")
 async def check_call_status(
     phone: str,
@@ -608,7 +658,9 @@ async def check_call_status(
                 secure=True,
                 samesite="lax"
             )
-            logger.info(f"[CHECK_CALL] Session created for verified user {user.phone}")
+            # Load phone before commit to avoid detached state issue
+            user_phone = user.phone
+            logger.info(f"[CHECK_CALL] Session created for verified user {user_phone}")
 
         return {"verified": True, "status": "verified", "redirect": f"/card/{phone}"}
 
@@ -620,6 +672,79 @@ async def check_call_status(
 
     # No active check call
     return {"verified": False, "status": "none"}
+
+
+@router.post("/api/auth/simulate-check-call")
+async def simulate_check_call(
+    phone: str,
+    db: AsyncSession = Depends(get_async_db),
+    response: Response = None
+):
+    """
+    Simulate incoming check call in test mode (emulates SMS.ru webhook).
+
+    This endpoint is called by frontend when user clicks "Позвонить" button.
+    Only works in test mode (SMS_TEST_MODE=True).
+
+    Args:
+        phone: Normalized phone number (+7XXXXXXXXXX)
+        db: AsyncSession database session
+        response: FastAPI response object (for setting cookie)
+
+    Returns:
+        {
+            "success": bool,
+            "message": str,
+            "verified": bool,
+            "redirect": str (if verified)
+        }
+
+    Logic:
+        - Checks if test mode is enabled
+        - Finds user by phone
+        - Calls simulate_incoming_call service function
+        - Commits changes to database
+        - Creates session and sets cookie if verified
+    """
+    if not settings.SMS_TEST_MODE:
+        logger.error(f"[SIMULATE] Endpoint called in production mode for {phone}")
+        raise HTTPException(status_code=403, detail="Simulation only available in test mode")
+
+    user = await get_user_by_phone(db, phone)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Simulate incoming call (emulates webhook)
+    success, message = await simulate_incoming_call(db, user)
+
+    if not success:
+        logger.warning(f"[SIMULATE] Failed for {phone}: {message}")
+        raise HTTPException(status_code=400, detail=message)
+
+    # Commit the verification
+    await db.commit()
+
+    logger.info(f"[SIMULATE] Success for {phone}, creating session")
+
+    # Create session and set cookie
+    token = await create_session(db, user.id)
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        max_age=COOKIE_MAX_AGE,
+        path=COOKIE_PATH,
+        httponly=True,
+        secure=True,
+        samesite="lax"
+    )
+
+    return {
+        "success": True,
+        "message": message,
+        "verified": True,
+        "redirect": f"/card/{phone}"
+    }
 
 
 # ============== Session API Routes ==============

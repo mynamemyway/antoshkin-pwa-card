@@ -121,7 +121,7 @@
         // Check session status using global function
         // If session is valid, redirect to card; otherwise show form
         checkSession('index');
-        
+
         // Show form if not redirected (session invalid or no session)
         showForm();
     });
@@ -172,18 +172,37 @@
                 throw new Error(data.detail || 'Ошибка регистрации');
             }
 
-            // Registration successful - send SMS
-            const smsResponse = await fetch('/api/send-sms', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ phone: phone })
-            });
+            // Registration successful - initiate verification based on auth method
+            const authMethod = "{{ auth_method }}";
 
-            if (!smsResponse.ok) {
-                const smsError = await smsResponse.json();
-                throw new Error(smsError.detail || 'Ошибка отправки SMS');
+            if (authMethod === 'check_call') {
+                // For check_call, use universal initiate endpoint
+                const initResponse = await fetch('/api/auth/initiate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ phone: phone })
+                });
+
+                if (!initResponse.ok) {
+                    const initError = await initResponse.json();
+                    throw new Error(initError.detail || 'Ошибка инициализации звонка');
+                }
+            } else {
+                // For SMS/Flash Call, send verification code
+                const smsResponse = await fetch('/api/auth/initiate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ phone: phone })
+                });
+
+                if (!smsResponse.ok) {
+                    const smsError = await smsResponse.json();
+                    throw new Error(smsError.detail || 'Ошибка отправки кода');
+                }
             }
 
             // Save phone to localStorage for auto-fill
