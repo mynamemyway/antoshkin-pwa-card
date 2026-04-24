@@ -19,7 +19,7 @@ import re
 class UserBase(BaseModel):
     """
     Base schema with common user attributes.
-    
+
     Used as parent class for other user schemas.
     """
     full_name: str = Field(..., min_length=1, max_length=100)
@@ -29,26 +29,26 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     """
     Schema for user registration request.
-    
+
     Validates incoming data when a new user registers.
     Phone number is validated for Russian format.
     """
-    
+
     @field_validator('phone')
     @classmethod
     def validate_phone(cls, v: str) -> str:
         """
         Validate phone number format.
-        
+
         Accepts: +7XXXXXXXXXX, 7XXXXXXXXXX, 8XXXXXXXXXX, +7 (XXX) XXX-XX-XX
         Returns: Normalized format +7XXXXXXXXXX
-        
+
         Raises:
             ValueError: If phone number is invalid
         """
         # Remove all non-digit characters except +
         cleaned = re.sub(r'[^\d+]', '', v)
-        
+
         # Handle different formats
         if cleaned.startswith('+7'):
             phone_digits = cleaned[1:]  # Remove +
@@ -58,14 +58,14 @@ class UserCreate(UserBase):
             phone_digits = '7' + cleaned[1:]
         else:
             raise ValueError('Phone number must start with +7, 7, or 8')
-        
+
         # Check length (7 + 10 digits = 11 characters)
         if len(phone_digits) != 11:
             raise ValueError('Phone number must have 11 digits (e.g., +7XXXXXXXXXX)')
-        
+
         # Return normalized format
         return f'+{phone_digits}'
-    
+
     class Config:
         """Pydantic config for validation."""
         json_schema_extra = {
@@ -79,18 +79,18 @@ class UserCreate(UserBase):
 class UserVerify(BaseModel):
     """
     Schema for SMS verification request.
-    
+
     Validates phone number and 4-digit verification code.
     """
     phone: str
     code: str = Field(..., min_length=4, max_length=4, pattern=r'^\d{4}$')
-    
+
     @field_validator('phone')
     @classmethod
     def validate_phone(cls, v: str) -> str:
         """Normalize phone number (same as UserCreate)."""
         cleaned = re.sub(r'[^\d+]', '', v)
-        
+
         if cleaned.startswith('+7'):
             phone_digits = cleaned[1:]
         elif cleaned.startswith('7'):
@@ -99,12 +99,12 @@ class UserVerify(BaseModel):
             phone_digits = '7' + cleaned[1:]
         else:
             raise ValueError('Phone number must start with +7, 7, or 8')
-        
+
         if len(phone_digits) != 11:
             raise ValueError('Phone number must have 11 digits')
-        
+
         return f'+{phone_digits}'
-    
+
     class Config:
         """Pydantic config for validation."""
         json_schema_extra = {
@@ -118,7 +118,7 @@ class UserVerify(BaseModel):
 class UserOut(BaseModel):
     """
     Schema for user data response.
-    
+
     Returns user information after successful registration
     or verification. Excludes sensitive data (sms_code).
     """
@@ -127,7 +127,7 @@ class UserOut(BaseModel):
     phone: str
     is_verified: bool
     created_at: datetime
-    
+
     class Config:
         """Pydantic config for ORM mode."""
         from_attributes = True
@@ -136,14 +136,14 @@ class UserOut(BaseModel):
 class UserListOut(BaseModel):
     """
     Schema for admin user list response.
-    
+
     Returns paginated list of users with total count.
     """
     users: List[UserOut]
     total: int
     limit: int
     offset: int
-    
+
     class Config:
         """Pydantic config for validation."""
         json_schema_extra = {
@@ -167,17 +167,17 @@ class UserListOut(BaseModel):
 class SMSRequest(BaseModel):
     """
     Schema for SMS sending request.
-    
+
     Validates phone number for SMS code delivery.
     """
     phone: str
-    
+
     @field_validator('phone')
     @classmethod
     def validate_phone(cls, v: str) -> str:
         """Normalize phone number (same as UserCreate)."""
         cleaned = re.sub(r'[^\d+]', '', v)
-        
+
         if cleaned.startswith('+7'):
             phone_digits = cleaned[1:]
         elif cleaned.startswith('7'):
@@ -186,12 +186,12 @@ class SMSRequest(BaseModel):
             phone_digits = '7' + cleaned[1:]
         else:
             raise ValueError('Phone number must start with +7, 7, or 8')
-        
+
         if len(phone_digits) != 11:
             raise ValueError('Phone number must have 11 digits')
-        
+
         return f'+{phone_digits}'
-    
+
     class Config:
         """Pydantic config for validation."""
         json_schema_extra = {
@@ -204,7 +204,7 @@ class SMSRequest(BaseModel):
 class VerifyResponse(BaseModel):
     """
     Schema for verification response.
-    
+
     Simple boolean response for verification status.
     """
     verified: bool
@@ -213,7 +213,9 @@ class VerifyResponse(BaseModel):
 class SMSResponse(BaseModel):
     """
     Schema for SMS sending response.
-    
+
     Indicates if SMS was sent successfully.
+    For check_call method, also includes the phone number to call.
     """
     sent: bool
+    call_phone: Optional[str] = None
