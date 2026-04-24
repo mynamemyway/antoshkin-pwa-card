@@ -3,7 +3,7 @@
 """
 Authorization dispatcher.
 
-Selects the appropriate authorization method (SMS or Flash Call)
+Selects the appropriate authorization method (SMS, Flash Call, or Check Call)
 based on the AUTH_METHOD configuration setting.
 
 Functions:
@@ -20,6 +20,7 @@ from app.config import settings
 from app.models import User
 from app.services.sms_service import send_sms, generate_sms_code
 from app.services.call_service import send_flash_call
+from app.services.check_call_service import initiate_check_call
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ async def send_verification_code(
     request: Optional[Request] = None
 ) -> Tuple[bool, str, str]:
     """
-    Send verification code using the configured method (SMS or Flash Call).
+    Send verification code using the configured method (SMS, Flash Call, or Check Call).
 
     Args:
         phone: Normalized phone number (+7XXXXXXXXXX)
@@ -67,19 +68,21 @@ async def send_verification_code(
 
     Returns:
         Tuple of (success: bool, code: str, message: str)
-        - Code is returned for storage in database
+        - For SMS/Flash Call: code is returned for storage in database
+        - For Check Call: code is empty string, check_id is stored separately
         - Message contains status or error description
 
     Logic:
         - If AUTH_METHOD = "sms": generate code locally, send via SMS
         - If AUTH_METHOD = "call": API generates code, returns it in response
+        - If AUTH_METHOD = "check_call": API returns check_id and call_phone
 
     Usage:
         success, code, message = await send_verification_code(
             "+79991234567", request
         )
         if success:
-            # Save code to database
+            # Save code to database (for SMS/Flash Call)
             user.sms_code = code
     """
     # Get client IP for anti-fraud protection
@@ -89,6 +92,12 @@ async def send_verification_code(
         # Flash Call mode: API generates and returns the code
         logger.info(f"[DISPATCHER] Using Flash Call for {phone}")
         return await send_flash_call(phone, ip)
+    elif settings.AUTH_METHOD == "check_call":
+        # Check Call mode: user makes call to verify
+        logger.info(f"[DISPATCHER] Using Check Call for {phone}")
+        success, check_id, call_phone, message = await initiate_check_call(phone)
+        # Return check_id as "code" for compatibility (will be stored in sms_check_id)
+        return success, check_id, message
     else:
         # SMS mode (default): generate code locally and send via SMS
         logger.info(f"[DISPATCHER] Using SMS for {phone}")
