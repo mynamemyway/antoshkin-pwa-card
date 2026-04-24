@@ -12,6 +12,7 @@ Functions:
 """
 
 import logging
+from datetime import datetime, timedelta
 from typing import Tuple, Optional
 
 import httpx
@@ -73,24 +74,49 @@ async def initiate_check_call(
     """
     from datetime import timedelta
 
-    # Test mode: return stub and auto-verify user
+    # Test mode: make REAL request to SMS.ru but auto-verify immediately
     if settings.SMS_TEST_MODE:
-        logger.info(f"[CHECK_CALL] Initiated for {phone} (test mode)")
-        print(f"[CHECK_CALL STUB] Check call initiated for {phone}")
+        logger.info(f"[CHECK_CALL] Initiated for {phone} (test mode with real API)")
 
-        # Generate deterministic test check_id
-        test_check_id = f"TEST-{phone[-4:]}"
+        # Make real request to get actual check_id
+        url = "https://sms.ru/callcheck/add"
+        params = {
+            "api_id": settings.SMS_API_KEY,
+            "phone": phone.lstrip('+'),
+            "json": 1
+        }
 
-        # Update user: save check_id temporarily, then immediately verify
-        user.sms_check_id = test_check_id
-        user.sms_code_expires_at = None  # No expiration in test mode
-        user.is_verified = True
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params, timeout=10.0)
+                response.raise_for_status()
+                data = response.json()
 
-        # Clear check_id after verification (simulate webhook behavior)
-        user.sms_check_id = None
+                if data.get("status") == "OK":
+                    real_check_id = data.get("check_id")
+                    logger.info(f"[CHECK_CALL] Got real check_id {real_check_id} in test mode")
+                    print(f"[CHECK_CALL] SMS.ru response (test mode): {data}")
 
-        logger.info(f"[CHECK_CALL] Test mode: User {user.phone} auto-verified")
-        return True, test_check_id, "Check call initiated (test mode)"
+                    # Save real check_id temporarily
+                    user.sms_check_id = real_check_id
+                    user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+                    await db.commit()
+
+                    # Immediately mark as verified (emulating webhook)
+                    user.is_verified = True
+                    user.sms_check_id = None
+                    user.sms_code_expires_at = None
+                    await db.commit()
+
+                    logger.info(f"[CHECK_CALL] Test mode: User {user.phone} auto-verified with real check_id")
+                    return True, real_check_id, "Check call initiated (test mode)"
+                else:
+                    error_msg = data.get("status_text", "Unknown error")
+                    logger.error(f"[CHECK_CALL] SMS.ru error in test mode: {error_msg}")
+                    return False, "", f"SMS.ru error: {error_msg}"
+        except Exception as e:
+            logger.error(f"[CHECK_CALL] Request error in test mode: {str(e)}")
+            return False, "", f"Network error: {str(e)}"
 
     # Production mode: request check call via SMS.ru API using httpx
     url = "https://sms.ru/callcheck/add"
