@@ -15,29 +15,42 @@ import logging
 from typing import Tuple, Optional
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.models import User
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 
-async def initiate_check_call(phone: str) -> Tuple[bool, str, str, str]:
+async def initiate_check_call(
+    db: AsyncSession,
+    user: User,
+    phone: str
+) -> Tuple[bool, str, str]:
     """
     Initiate Check Call verification via SMS.ru API.
 
     Args:
+        db: AsyncSession database session
+        user: User object to update
         phone: Normalized phone number (+7XXXXXXXXXX)
 
     Returns:
-        Tuple of (success: bool, check_id: str, call_phone: str, message: str)
-        - check_id: Verification ID to store in database
-        - call_phone: Number user should call (formatted for tel: link)
+        Tuple of (success: bool, check_id: str, message: str)
+        - check_id: Verification ID (or TEST stub in test mode)
         - message: Status or error description
 
     Note:
-        In test mode (SMS_TEST_MODE=True), returns stub response.
-        In production, makes request to SMS.ru /callcheck/add endpoint.
+        In test mode (SMS_TEST_MODE=True):
+        - Returns stub response
+        - Immediately marks user as verified (is_verified=True)
+        - Clears temporary fields (sms_check_id, sms_code_expires_at)
+
+        In production:
+        - Makes request to SMS.ru /callcheck/add endpoint
+        - Saves check_id to user.sms_check_id for webhook verification
 
     SMS.ru API:
         GET https://sms.ru/callcheck/add
@@ -54,17 +67,30 @@ async def initiate_check_call(phone: str) -> Tuple[bool, str, str, str]:
         }
 
     Usage:
-        success, check_id, call_phone, message = await initiate_check_call("+79991234567")
+        success, check_id, message = await initiate_check_call(db, user, "+79991234567")
         if success:
-            # Save check_id to user.sms_check_id
-            # Display call_phone to user
+            await db.commit()  # User already updated in service
     """
-    # Test mode: return stub without making API call
+    from datetime import timedelta
+
+    # Test mode: return stub and auto-verify user
     if settings.SMS_TEST_MODE:
         logger.info(f"[CHECK_CALL] Initiated for {phone} (test mode)")
         print(f"[CHECK_CALL STUB] Check call initiated for {phone}")
-        # Return deterministic test values
-        return True, f"TEST-{phone[-4:]}", "+78005008275", "Check call initiated (test mode)"
+
+        # Generate deterministic test check_id
+        test_check_id = f"TEST-{phone[-4:]}"
+
+        # Update user: save check_id temporarily, then immediately verify
+        user.sms_check_id = test_check_id
+        user.sms_code_expires_at = None  # No expiration in test mode
+        user.is_verified = True
+
+        # Clear check_id after verification (simulate webhook behavior)
+        user.sms_check_id = None
+
+        logger.info(f"[CHECK_CALL] Test mode: User {user.phone} auto-verified")
+        return True, test_check_id, "Check call initiated (test mode)"
 
     # Production mode: request check call via SMS.ru API using httpx
     url = "https://sms.ru/callcheck/add"
@@ -89,33 +115,37 @@ async def initiate_check_call(phone: str) -> Tuple[bool, str, str, str]:
                 call_phone = data.get("call_phone")
                 call_phone_pretty = data.get("call_phone_pretty", call_phone)
 
+                # Update user with check_id for webhook verification
+                user.sms_check_id = check_id
+                user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+
                 logger.info(
                     f"[CHECK_CALL] Initiated for {phone}, "
                     f"check_id: {check_id}, call_phone: {call_phone_pretty}"
                 )
-                return True, check_id, call_phone, "Check call initiated"
+                return True, check_id, "Check call initiated"
             else:
                 error_msg = data.get("status_text", "Unknown error")
                 status_code = data.get("status_code", "N/A")
                 logger.error(
                     f"[CHECK_CALL] SMS.ru error for {phone}: {error_msg} (code: {status_code})"
                 )
-                return False, "", "", f"SMS.ru error: {error_msg}"
+                return False, "", f"SMS.ru error: {error_msg}"
 
     except httpx.TimeoutException as e:
         error_msg = "Request timeout"
         logger.error(f"[CHECK_CALL] Timeout for {phone}: {error_msg}")
-        return False, "", "", f"Network error: {error_msg}"
+        return False, "", f"Network error: {error_msg}"
 
     except httpx.RequestError as e:
         error_msg = str(e)
         logger.error(f"[CHECK_CALL] Request error for {phone}: {error_msg}")
-        return False, "", "", f"Network error: {error_msg}"
+        return False, "", f"Network error: {error_msg}"
 
     except ValueError as e:
         error_msg = "JSON parse error"
         logger.error(f"[CHECK_CALL] JSON parse error for {phone}: {str(e)}")
-        return False, "", "", f"Response error: {error_msg}"
+        return False, "", f"Response error: {error_msg}"
 
 
 async def verify_check_call_status(check_id: str) -> Tuple[bool, str, str]:

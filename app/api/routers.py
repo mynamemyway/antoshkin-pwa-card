@@ -42,7 +42,7 @@ from app.services.crud import (
 )
 from app.services.auth_dispatcher import send_verification_code
 from app.services.sms_service import verify_sms_code
-from app.services.check_call_service import verify_check_call_status
+from app.services.check_call_service import verify_check_call_status, initiate_check_call
 from app.services.session_service import (
     create_session,
     get_session_by_token,
@@ -305,28 +305,33 @@ async def send_sms_endpoint(sms_data: SMSRequest, request: Request, db: AsyncSes
     Note:
         For check_call method: saves check_id to sms_check_id field
         For SMS/Flash Call: saves code to sms_code field
+        In test mode for check_call: immediately marks user as verified
     """
     user = await get_user_by_phone(db, sms_data.phone)
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Send code via configured method (SMS, Flash Call, or Check Call)
+    # Handle Check Call mode with service function
+    if settings.AUTH_METHOD == "check_call":
+        success, check_id, message = await initiate_check_call(db, user, user.phone)
+
+        if not success:
+            raise HTTPException(status_code=500, detail=message)
+
+        logger.info(f"[API] Check call initiated for {user.phone}, check_id: {check_id}")
+        await db.commit()
+        return SMSResponse(sent=True)
+
+    # SMS/Flash Call mode: use dispatcher service
     success, code, message = await send_verification_code(user.phone, request)
 
     if not success:
         raise HTTPException(status_code=500, detail=message)
 
-    # Save verification data to database based on auth method
-    if settings.AUTH_METHOD == "check_call":
-        # Check Call mode: save check_id for webhook verification
-        user.sms_check_id = code
-        user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
-        logger.info(f"[API] Check call initiated for {user.phone}, check_id: {code}")
-    else:
-        # SMS/Flash Call mode: save code for manual verification
-        user.sms_code = code
-        user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+    # Save verification data to database
+    user.sms_code = code
+    user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
 
     await db.commit()
 
@@ -443,25 +448,26 @@ async def login(
         # User not found - frontend should trigger registration
         raise HTTPException(status_code=404, detail="User not found")
 
-    # User exists - send code via configured method (SMS or Flash Call)
-    # This handles Scenario 3 (verified, no cookie) and Scenario 4 (not verified)
+    # Handle Check Call mode with service function
+    if settings.AUTH_METHOD == "check_call":
+        success, check_id, message = await initiate_check_call(db, user, user.phone)
 
-    # Send code via configured method
+        if not success:
+            raise HTTPException(status_code=500, detail=message)
+
+        logger.info(f"[API] Check call initiated for {user.phone}, check_id: {check_id}")
+        await db.commit()
+        return SMSResponse(sent=True)
+
+    # SMS/Flash Call mode: use dispatcher service
     success, code, message = await send_verification_code(user.phone, request)
 
     if not success:
         raise HTTPException(status_code=500, detail=message)
 
-    # Code sent successfully - save to database based on auth method
-    if settings.AUTH_METHOD == "check_call":
-        # Check Call mode: save check_id for webhook verification
-        user.sms_check_id = code
-        user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
-        logger.info(f"[API] Check call initiated for {user.phone}, check_id: {code}")
-    else:
-        # SMS/Flash Call mode: save code for manual verification
-        user.sms_code = code
-        user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+    # Code sent successfully - save to database
+    user.sms_code = code
+    user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
 
     await db.commit()
 
@@ -547,7 +553,8 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
 @router.get("/api/auth/check-call-status")
 async def check_call_status(
     phone: str,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    response: Response = None
 ):
     """
     Check verification status for Check Call method (polling endpoint).
@@ -555,14 +562,18 @@ async def check_call_status(
     Frontend polls this endpoint every 2-3 seconds to detect when
     the webhook has updated the user's verification status.
 
+    If user is verified and no session exists, creates a new session and sets cookie.
+
     Args:
         phone: Normalized phone number (+7XXXXXXXXXX)
         db: AsyncSession database session
+        response: FastAPI response object (for setting cookie)
 
     Returns:
         {
             "verified": bool,
-            "status": str  # "pending", "verified", "expired"
+            "status": str,  # "pending", "verified", "expired"
+            "redirect": str  # "/card/{phone}" if verified
         }
 
     Usage (Frontend):
@@ -579,7 +590,27 @@ async def check_call_status(
 
     # Check if user is verified
     if user.is_verified:
-        return {"verified": True, "status": "verified"}
+        # Check if there's already an active session for this user
+        from sqlalchemy import select
+        stmt = select(Session).where(Session.user_id == user.id)
+        result = await db.execute(stmt)
+        existing_session = result.scalars().first()
+
+        # If no active session, create one and set cookie
+        if not existing_session and response:
+            token = await create_session(db, user.id)
+            response.set_cookie(
+                key=COOKIE_NAME,
+                value=token,
+                max_age=COOKIE_MAX_AGE,
+                path=COOKIE_PATH,
+                httponly=True,
+                secure=True,
+                samesite="lax"
+            )
+            logger.info(f"[CHECK_CALL] Session created for verified user {user.phone}")
+
+        return {"verified": True, "status": "verified", "redirect": f"/card/{phone}"}
 
     # Check if check_id exists and not expired
     if user.sms_check_id and user.sms_code_expires_at:
