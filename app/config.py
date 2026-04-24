@@ -31,8 +31,8 @@ class Settings(BaseSettings):
     SMS_SENDER_NAME: str = ""
     SMS_TEST_MODE: bool = True
 
-    # Auth Method: "sms" or "call"
-    AUTH_METHOD: str = "call"
+    # Auth Method: ["sms", "call", "check_call"]
+    AUTH_METHOD: str = "check_call"
 
     # App Settings
     DEBUG: bool = True
