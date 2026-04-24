@@ -175,8 +175,10 @@
             // Registration successful - initiate verification based on auth method
             const authMethod = "{{ auth_method }}";
 
+            let callPhone = null;
+
             if (authMethod === 'check_call') {
-                // For check_call, use universal initiate endpoint
+                // For check_call, use universal initiate endpoint which returns call_phone
                 const initResponse = await fetch('/api/auth/initiate', {
                     method: 'POST',
                     headers: {
@@ -188,6 +190,11 @@
                 if (!initResponse.ok) {
                     const initError = await initResponse.json();
                     throw new Error(initError.detail || 'Ошибка инициализации звонка');
+                }
+
+                const initData = await initResponse.json();
+                if (initData.call_phone) {
+                    callPhone = initData.call_phone;
                 }
             } else {
                 // For SMS/Flash Call, send verification code
@@ -205,8 +212,11 @@
                 }
             }
 
-            // Save phone to localStorage for auto-fill
+            // Save phone and call_phone to localStorage for auto-fill
             localStorage.setItem('phone', phone);
+            if (callPhone) {
+                localStorage.setItem('call_phone', callPhone);
+            }
 
             // Redirect to verification
             window.location.href = `/verify?phone=${encodeURIComponent(phone)}`;
