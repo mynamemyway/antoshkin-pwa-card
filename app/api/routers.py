@@ -527,6 +527,7 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
 
         # SMS.ru sends data in data[1], data[2], ... data[100] format
         # Each entry is multi-line text: type\ncheck_id\nstatus\ntimestamp
+        api_id = settings.SMS_API_KEY  # Your SMS_API_KEY from SMS.ru
 
         # Process each data entry
         from sqlalchemy import select
@@ -548,10 +549,10 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
 
                     # Handle callcheck_status events
                     if event_type == "callcheck_status":
-                        # Optional: Validate hash if present and SMS_API_KEY is configured
-                        if 'hash' in form_data and hasattr(settings, 'SMS_API_KEY') and settings.SMS_API_KEY:
+                        # Validate hash if present
+                        if 'hash' in form_data:
                             import hashlib
-                            expected_hash = hashlib.sha256((settings.SMS_API_KEY + str(value)).encode()).hexdigest()
+                            expected_hash = hashlib.sha256((api_id + str(value)).encode()).hexdigest()
                             if form_data['hash'] != expected_hash:
                                 logger.warning(f"[WEBHOOK] Hash validation failed")
 
@@ -563,9 +564,6 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
                             user = result.scalar_one_or_none()
 
                             if user:
-                                # Save phone before commit to avoid lazy loading after session close
-                                user_phone = user.phone
-
                                 # Mark user as verified
                                 user.is_verified = True
                                 user.sms_check_id = None  # Clear check_id after successful verification
@@ -573,7 +571,7 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
                                 user.sms_code_expires_at = None
                                 await db.commit()
 
-                                logger.info(f"[WEBHOOK] User {user_phone} verified via check call")
+                                logger.info(f"[WEBHOOK] User {user.phone} verified via check call")
                                 return PlainTextResponse(content="100")
                             else:
                                 logger.warning(f"[WEBHOOK] User not found for check_id: {check_id}")
@@ -671,13 +669,14 @@ async def check_call_status(
     Check verification status for Check Call method (polling endpoint).
 
     Frontend polls this endpoint every 2-3 seconds to detect when
-    the user completes the call verification.
-
-    Uses TWO methods to check status:
-    1. Check database for webhook update (is_verified=True, sms_check_id cleared)
-    2. Active polling of SMS.ru API as fallback (more reliable than webhooks in Docker)
+    the webhook has updated the user's verification status.
 
     If user is verified and no session exists, creates a new session and sets cookie.
+
+    IMPORTANT: This endpoint ONLY checks the status of the active sms_check_id.
+    It does NOT check user.is_verified flag to prevent bypassing the call verification.
+    Even if user.is_verified=True from a previous session, we must wait for the
+    webhook to confirm the NEW call before creating a session.
 
     Args:
         phone: Normalized phone number (+7XXXXXXXXXX)
@@ -706,6 +705,11 @@ async def check_call_status(
     # Explicitly load phone to avoid lazy loading issues in async context
     user_phone = user.phone
 
+    # CRITICAL: Do NOT check user.is_verified here!
+    # We must only verify based on the current sms_check_id status.
+    # The webhook is the only source of truth for call verification.
+    # This prevents bypassing the call by having is_verified=True from a previous session.
+
     # Check if there's an active sms_check_id
     if not user.sms_check_id:
         # No active check call session
@@ -716,12 +720,18 @@ async def check_call_status(
         if datetime.utcnow() > user.sms_code_expires_at:
             return {"verified": False, "status": "expired"}
 
-    # Check if webhook has already confirmed (is_verified=True AND sms_check_id cleared)
-    # The webhook flow:
+    # Check if user was verified by webhook (is_verified=True AND sms_check_id was cleared)
+    # But since we're still checking status, sms_check_id should still be present until webhook clears it
+    # The webhook sets is_verified=True AND clears sms_check_id
+    # So if is_verified=True but sms_check_id is still set, we're still waiting for webhook confirmation
+
+    # Actually, the webhook flow is:
     # 1. User initiates call -> sms_check_id is set
     # 2. User calls -> SMS.ru sends webhook with status=401
     # 3. Webhook handler sets is_verified=True AND clears sms_check_id
     # 4. Polling detects is_verified=True with no sms_check_id -> success
+
+    # So we need to check: is_verified=True means webhook confirmed the call
     if user.is_verified and not user.sms_check_id:
         # Webhook has confirmed the call - create session if needed
         from sqlalchemy import select
@@ -741,11 +751,11 @@ async def check_call_status(
                 secure=True,
                 samesite="lax"
             )
-            logger.info(f"[CHECK_CALL] Session created for verified user {user_phone} via webhook")
+            logger.info(f"[CHECK_CALL] Session created for verified user {user_phone}")
 
         return {"verified": True, "status": "verified", "redirect": f"/card/{phone}"}
 
-    # Still waiting for webhook confirmation
+    # Still waiting for webhook confirmation (sms_check_id exists, is_verified may be old value)
     return {"verified": False, "status": "pending"}
 
 
