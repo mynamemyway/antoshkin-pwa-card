@@ -76,8 +76,6 @@ async def initiate_check_call(
             user.sms_check_id = check_id
             await db.commit()
     """
-    from datetime import timedelta
-
     # Test mode: make REAL request to SMS.ru to get actual check_id
     # Does NOT auto-verify — simulation is done via separate endpoint
     if settings.SMS_TEST_MODE:
@@ -273,7 +271,8 @@ async def verify_check_call_status(check_id: str) -> Tuple[bool, str, str]:
 
 async def simulate_incoming_call(
     db: AsyncSession,
-    user: User
+    user: User,
+    phone: str
 ) -> Tuple[bool, str]:
     """
     Simulate incoming check call webhook in test mode.
@@ -284,6 +283,7 @@ async def simulate_incoming_call(
     Args:
         db: AsyncSession database session
         user: User object to update
+        phone: Phone number for logging (passed explicitly to avoid lazy loading)
 
     Returns:
         Tuple of (success: bool, message: str)
@@ -295,7 +295,7 @@ async def simulate_incoming_call(
         - Does NOT commit — caller must commit the session
 
     Usage:
-        success, message = await simulate_incoming_call(db, user)
+        success, message = await simulate_incoming_call(db, user, phone)
         if success:
             await db.commit()
     """
@@ -304,15 +304,15 @@ async def simulate_incoming_call(
         return False, "Simulation only available in test mode"
 
     if not user.sms_check_id:
-        logger.warning(f"[SIMULATE] No sms_check_id found for {user.phone}")
+        logger.warning(f"[SIMULATE] No sms_check_id found for {phone}")
         return False, "No active check call found"
 
     # Emulate webhook: mark user as verified
-    logger.info(f"[SIMULATE] Simulating incoming call for {user.phone}, check_id: {user.sms_check_id}")
+    logger.info(f"[SIMULATE] Simulating incoming call for {phone}, check_id: {user.sms_check_id}")
 
     user.is_verified = True
     user.sms_check_id = None
     user.sms_code_expires_at = None
 
-    logger.info(f"[SIMULATE] User {user.phone} verified successfully (simulated)")
+    logger.info(f"[SIMULATE] User {phone} verified successfully (simulated)")
     return True, "Call simulated successfully"

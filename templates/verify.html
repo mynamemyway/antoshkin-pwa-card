@@ -312,9 +312,9 @@
         waitingStatus.classList.remove('hidden');
 
         try {
-            // Step 1: Send request to initiate check call (get check_id from SMS.ru)
-            // In test mode, this also auto-simulates the call completion
-            const response = await fetch('/api/auth/check-call/initiate', {
+            // Step 1: Simulate incoming call (test mode only)
+            // This endpoint emulates the webhook from SMS.ru when user clicks "Call" button
+            const response = await fetch('/api/auth/simulate-call', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

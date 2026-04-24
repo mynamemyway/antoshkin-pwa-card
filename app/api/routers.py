@@ -586,17 +586,15 @@ async def simulate_call_endpoint(
     if not user.sms_check_id:
         raise HTTPException(status_code=400, detail="No active check session. Please initiate call first.")
 
-    # Эмулируем webhook: верифицируем пользователя
-    logger.info(f"[SIMULATE] Simulating incoming call for {user.phone}, check_id: {user.sms_check_id}")
+    # Используем сервисный метод для симуляции (передаём phone явно, чтобы избежать lazy loading)
+    success, message = await simulate_incoming_call(db, user, sms_data.phone)
 
-    user.is_verified = True
-    old_check_id = user.sms_check_id
-    user.sms_check_id = None
-    user.sms_code_expires_at = None
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
 
     await db.commit()
 
-    logger.info(f"[SIMULATE] User {user.phone} verified successfully (simulated). Old check_id: {old_check_id}")
+    logger.info(f"[SIMULATE] User {sms_data.phone} verified successfully (simulated)")
     return {"success": True, "message": "OK"}
 
 
