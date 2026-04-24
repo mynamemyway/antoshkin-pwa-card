@@ -529,10 +529,28 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
         # Each entry is multi-line text: type\ncheck_id\nstatus\ntimestamp
         api_id = settings.SMS_API_KEY  # Your SMS_API_KEY from SMS.ru
 
+        # Collect all data entries for hash validation
+        data_entries = []
+        for key, value in form_data.items():
+            if key.startswith('data['):
+                data_entries.append(str(value))
+
+        # Validate hash if present
+        if 'hash' in form_data and data_entries:
+            import hashlib
+            # Hash is computed from api_id + concatenation of ALL data entries
+            hash_string = api_id + ''.join(data_entries)
+            expected_hash = hashlib.sha256(hash_string.encode()).hexdigest()
+
+            if form_data['hash'] != expected_hash:
+                logger.warning(f"[WEBHOOK] Hash validation failed. Expected: {expected_hash}, Got: {form_data['hash']}")
+                # Still return 100 to avoid retry loops, but log the warning
+
         # Process each data entry
         from sqlalchemy import select
         from fastapi.responses import PlainTextResponse
 
+        processed = False
         for key, value in form_data.items():
             if key.startswith('data['):
                 logger.info(f"[WEBHOOK] Processing {key}: {repr(value)}")
@@ -549,13 +567,6 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
 
                     # Handle callcheck_status events
                     if event_type == "callcheck_status":
-                        # Validate hash if present
-                        if 'hash' in form_data:
-                            import hashlib
-                            expected_hash = hashlib.sha256((api_id + str(value)).encode()).hexdigest()
-                            if form_data['hash'] != expected_hash:
-                                logger.warning(f"[WEBHOOK] Hash validation failed")
-
                         # Check if status indicates successful verification (401 = verified)
                         if status == "401":
                             # Find user by check_id
@@ -572,16 +583,18 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
                                 await db.commit()
 
                                 logger.info(f"[WEBHOOK] User {user.phone} verified via check call")
-                                return PlainTextResponse(content="100")
+                                processed = True
                             else:
                                 logger.warning(f"[WEBHOOK] User not found for check_id: {check_id}")
-                                return PlainTextResponse(content="100")
                         else:
                             logger.info(f"[WEBHOOK] Check call status {status} for check_id: {check_id}")
-                            return PlainTextResponse(content="100")
+                            processed = True
 
         # No valid data entries found
-        logger.warning(f"[WEBHOOK] No valid data entries found in webhook")
+        if not data_entries:
+            logger.warning(f"[WEBHOOK] No valid data entries found in webhook")
+
+        # Always return 100 to confirm receipt (SMS.ru requirement)
         return PlainTextResponse(content="100")
 
     except Exception as e:
