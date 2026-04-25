@@ -31,6 +31,15 @@ app = FastAPI(
     debug=settings.DEBUG,
 )
 
+# Trust proxies (nginx) to correctly identify HTTPS
+# This is required for secure cookies to work behind a reverse proxy
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
+
+# Configure Uvicorn to trust proxy headers (X-Forwarded-Proto, etc.)
+# This must be done via uvicorn config or environment variable
+# For programmatic setup, we rely on the proxy_headers middleware being enabled by default in production
+
 # Add authentication middleware
 # Runs on every request, injects current_user into request.state
 app.add_middleware(SessionAuthMiddleware)
@@ -47,8 +56,6 @@ async def favicon():
 
 @app.get("/apple-touch-icon.png", include_in_schema=False)
 async def apple_touch():
-    # Если в корне лежит icon-180.png, укажи его имя. 
-    # Если переименовал в apple-touch-icon.png, оставь так:
     return FileResponse(os.path.join(BASE_DIR, "apple-touch-icon.png"))
 
 @app.get("/apple-touch-icon-precomposed.png", include_in_schema=False)

@@ -735,12 +735,16 @@ async def check_call_status(
 
     # IMPORTANT: Check this FIRST before checking if sms_check_id exists!
     # If webhook has already confirmed (is_verified=True and sms_check_id=None), we should succeed
+    logger.info(f"[CHECK_CALL] Checking status for {user_phone}: is_verified={user.is_verified}, sms_check_id={user.sms_check_id}")
+
     if user.is_verified and not user.sms_check_id:
         # Webhook has confirmed the call - create session if needed
         from sqlalchemy import select
         stmt = select(Session).where(Session.user_id == user.id)
         result = await db.execute(stmt)
         existing_session = result.scalars().first()
+
+        logger.info(f"[CHECK_CALL] existing_session={existing_session}, response is None={response is None}")
 
         # If no active session, create one and set cookie
         if not existing_session and response:
@@ -754,14 +758,17 @@ async def check_call_status(
                 max_age=COOKIE_MAX_AGE,
                 path=COOKIE_PATH,
                 httponly=True,
-                secure=True,
+                secure=True,  # HTTPS required for production
                 samesite="lax"
             )
-            logger.info(f"[CHECK_CALL] Session created for verified user {user_phone}, cookie set")
+            logger.info(f"[CHECK_CALL] Session created for verified user {user_phone}, token={token[:20]}..., cookie set (secure=True for HTTPS)")
+            logger.info(f"[CHECK_CALL] Set-Cookie header will be sent")
         elif existing_session:
-            logger.info(f"[CHECK_CALL] Session already exists for user {user_phone}")
+            logger.info(f"[CHECK_CALL] Session already exists for user {user_phone}, token={existing_session.token[:20] if existing_session.token else 'None'}...")
+        elif not response:
+            logger.error(f"[CHECK_CALL] CRITICAL: Response object is None, cannot set cookie for {user_phone}!")
         else:
-            logger.warning(f"[CHECK_CALL] Response object is None, cannot set cookie for {user_phone}")
+            logger.warning(f"[CHECK_CALL] Unknown state: existing_session={existing_session}, response={response} for {user_phone}")
 
         return {"verified": True, "status": "verified", "redirect": f"/card/{phone}"}
 

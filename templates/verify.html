@@ -337,7 +337,8 @@
                     },
                     body: JSON.stringify({
                         phone: phone
-                    })
+                    }),
+                    credentials: 'include'  // Important: accept cookies from server
                 });
 
                 const data = await response.json();
@@ -388,7 +389,9 @@
 
         pollingInterval = setInterval(async () => {
             try {
-                const response = await fetch(`/api/auth/check-call-status?phone=${encodeURIComponent(phone)}`);
+                const response = await fetch(`/api/auth/check-call-status?phone=${encodeURIComponent(phone)}`, {
+                    credentials: 'include'  // Important: accept cookies from server
+                });
                 const data = await response.json();
 
                 if (data.verified) {
