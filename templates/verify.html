@@ -294,8 +294,8 @@
                 callPhoneDisplay.classList.remove('hidden');
             }
 
-            // Do NOT start polling yet - wait for user to click call button
-            // Polling will be started in initiateCall() after successful API request
+            // Start polling immediately when page loads (сразу на странице верификации)
+            startStatusPolling();
         } else {
             // SMS/Flash Call mode: check session, then start timer
             checkSession('verify');
@@ -364,10 +364,9 @@
 
                 // Hide the call button and show waiting status
                 callButton.style.display = 'none';
-                callPhoneDisplay.classList.remove('hidden');
-
-                // Start polling for verification status after user makes the call
-                startStatusPolling();
+                callPhoneDisplay.classList.remove('hidden');;
+                // Start polling for verification status after user makes the call (после кнопки "Позвонить")
+                // startStatusPolling();
             }
 
         } catch (error) {
