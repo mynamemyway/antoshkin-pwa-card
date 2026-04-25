@@ -204,7 +204,11 @@ sudo certbot renew --dry-run --pre-hook "docker compose -f /home/mynamemyway/pro
 **Просмотр логов приложения:**
 
 ```bash
-docker compose logs -f app
+ssh mynamemyway@91.206.14.93
+cd /home/mynamemyway/projects/antoshkin-pwa-card
+git pull
+docker-compose up -d --build
+docker-compose logs -f app
 ```
 
 **Просмотр логов nginx:**
