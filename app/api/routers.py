@@ -17,7 +17,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
@@ -60,17 +60,44 @@ COOKIE_PATH = "/"
 # ============== Page Routes (GET) ==============
 
 @router.get("/", response_class=HTMLResponse)
-async def root(request: Request):
+async def root(request: Request, db: AsyncSession = Depends(get_async_db)):
     """
-    Root endpoint - serves the main registration page.
+    Root endpoint - serves the main registration page or redirects to card if authenticated.
 
     Args:
         request: FastAPI request object (required for templates)
+        db: Database session
 
     Returns:
-        Rendered HTML template for the registration page
+        Rendered HTML template for the registration page OR redirect to card
     """
     from app.config import settings
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    # 1. Проверяем, есть ли кука сессии
+    session_token = request.cookies.get(COOKIE_NAME)
+
+    if session_token:
+        try:
+            # 2. Ищем сессию в БД
+            result = await db.execute(
+                select(Session)
+                .options(selectinload(Session.user))
+                .where(Session.token == session_token)
+            )
+            session = result.scalar_one_or_none()
+
+            # 3. Если сессия найдена и валидна - редиректим на карту
+            if session and session.is_valid():
+                user = session.user
+                logger.info(f"[ROOT REDIRECT] User {user.phone} found, redirecting to card...")
+                return RedirectResponse(url=f"/card/{user.phone}", status_code=302)
+        except Exception as e:
+            logger.error(f"[ROOT REDIRECT] Error checking session: {e}")
+            pass
+
+    # 4. Если куки нет или сессия невалидна - показываем регистрацию
     return request.state.templates.TemplateResponse("index.html", {
         "request": request,
         "auth_method": settings.AUTH_METHOD
