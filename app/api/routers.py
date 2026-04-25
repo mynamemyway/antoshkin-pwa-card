@@ -767,37 +767,38 @@ async def check_call_status(
 
     if user.is_verified and not user.sms_check_id:
         logger.info(f"[CHECK_CALL] Condition met: is_verified=True AND sms_check_id=None")
-        # Webhook has confirmed the call - create session if needed
+        # Webhook has confirmed the call - ALWAYS create/update session and set cookie
         from sqlalchemy import select
+
+        # Delete any existing sessions to ensure clean state
         stmt = select(Session).where(Session.user_id == user.id)
         result = await db.execute(stmt)
-        existing_session = result.scalars().first()
+        existing_sessions = result.scalars().all()
 
-        logger.info(f"[CHECK_CALL] existing_session={existing_session}, response is None={response is None}")
+        for old_session in existing_sessions:
+            await db.delete(old_session)
 
-        # If no active session, create one and set cookie
-        if not existing_session and response:
-            token = await create_session(db, user.id)
-            # Commit immediately after creating session to ensure it's saved
-            await db.commit()
+        # Create fresh session
+        token = await create_session(db, user.id)
+        await db.commit()
 
+        logger.info(f"[CHECK_CALL] Fresh session created for verified user {user_phone}, token={token[:20]}...")
+
+        # ALWAYS set cookie when verified, regardless of previous session state
+        if response:
             response.set_cookie(
                 key=COOKIE_NAME,
                 value=token,
                 max_age=COOKIE_MAX_AGE,
                 path=COOKIE_PATH,
                 httponly=True,
-                secure=True,  # HTTPS required for production
+                secure=True,
                 samesite="lax"
             )
-            logger.info(f"[CHECK_CALL] Session created for verified user {user_phone}, token={token[:20]}..., cookie set (secure=True for HTTPS)")
+            logger.info(f"[CHECK_CALL] Cookie forced set for {user_phone}")
             logger.info(f"[CHECK_CALL] Set-Cookie header will be sent")
-        elif existing_session:
-            logger.info(f"[CHECK_CALL] Session already exists for user {user_phone}, token={existing_session.token[:20] if existing_session.token else 'None'}...")
-        elif not response:
-            logger.error(f"[CHECK_CALL] CRITICAL: Response object is None, cannot set cookie for {user_phone}!")
         else:
-            logger.warning(f"[CHECK_CALL] Unknown state: existing_session={existing_session}, response={response} for {user_phone}")
+            logger.error(f"[CHECK_CALL] CRITICAL: Response object is None, cannot set cookie for {user_phone}!")
 
         return {"verified": True, "status": "verified", "redirect": f"/card/{phone}"}
 
