@@ -395,10 +395,8 @@
                     // User is verified - redirect to card page
                     clearInterval(pollingInterval);
                     localStorage.setItem('phone', phone);
-                    // Small delay to ensure cookie is processed before redirect
-                    setTimeout(() => {
-                        window.location.replace(`/card/${encodeURIComponent(phone)}`);
-                    }, 100);
+                    // Use replace to prevent back button from returning to verify page
+                    window.location.replace(`/card/${encodeURIComponent(phone)}`);
                 } else if (data.status === 'expired') {
                     // Check call expired
                     clearInterval(pollingInterval);
