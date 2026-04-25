@@ -736,8 +736,10 @@ async def check_call_status(
     # IMPORTANT: Check this FIRST before checking if sms_check_id exists!
     # If webhook has already confirmed (is_verified=True and sms_check_id=None), we should succeed
     logger.info(f"[CHECK_CALL] Checking status for {user_phone}: is_verified={user.is_verified}, sms_check_id={user.sms_check_id}")
+    logger.info(f"[CHECK_CALL] user object: id={user.id}, phone={user.phone}, is_verified={user.is_verified}, sms_check_id={user.sms_check_id}")
 
     if user.is_verified and not user.sms_check_id:
+        logger.info(f"[CHECK_CALL] Condition met: is_verified=True AND sms_check_id=None")
         # Webhook has confirmed the call - create session if needed
         from sqlalchemy import select
         stmt = select(Session).where(Session.user_id == user.id)

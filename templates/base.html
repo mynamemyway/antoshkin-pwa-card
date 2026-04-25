@@ -96,8 +96,8 @@
          *   - pageType === 'verify' → redirect to /card/{phone} (already verified)
          *   - pageType === 'card' or 'admin' → continue loading
          * - If session invalid (401):
-         *   - pageType === 'card' or 'admin' → redirect to /
-         *   - pageType === 'index' or 'verify' → continue loading
+         *   - pageType === 'admin' → redirect to /
+         *   - pageType === 'index' or 'verify' or 'card' → continue loading (don't redirect!)
          *
          * Usage in child templates:
          *   document.addEventListener('DOMContentLoaded', function() {
@@ -123,11 +123,12 @@
 
                 } else {
                     // Session is invalid (401 Unauthorized)
-                    if (pageType === 'card' || pageType === 'admin') {
-                        // On protected page without valid session → redirect to home
+                    if (pageType === 'admin') {
+                        // On admin page without valid session → redirect to home
                         window.location.href = '/';
                     }
-                    // For 'index' or 'verify' → continue loading (show form)
+                    // For 'index', 'verify', 'card' → continue loading (don't redirect!)
+                    // This allows the page to show content even if session check fails initially
                 }
             } catch (error) {
                 // Network error or server unavailable
