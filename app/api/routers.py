@@ -787,10 +787,10 @@ async def check_call_status(
                 max_age=COOKIE_MAX_AGE,
                 path=COOKIE_PATH,
                 httponly=True,
-                secure=False,  # Set to False for HTTP testing, True for production HTTPS
+                secure=True,  # HTTPS required for production
                 samesite="lax"
             )
-            logger.info(f"[CHECK_CALL] Session created for verified user {user_phone}, token={token[:20]}..., cookie set (secure=False for testing)")
+            logger.info(f"[CHECK_CALL] Session created for verified user {user_phone}, token={token[:20]}..., cookie set (secure=True for HTTPS)")
             logger.info(f"[CHECK_CALL] Set-Cookie header will be sent")
         elif existing_session:
             logger.info(f"[CHECK_CALL] Session already exists for user {user_phone}, token={existing_session.token[:20] if existing_session.token else 'None'}...")
