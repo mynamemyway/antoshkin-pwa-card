@@ -726,9 +726,41 @@ async def check_call_status(
     # The webhook is the only source of truth for call verification.
     # This prevents bypassing the call by having is_verified=True from a previous session.
 
+    # Check if user was verified by webhook (is_verified=True AND sms_check_id was cleared)
+    # The webhook flow is:
+    # 1. User initiates call -> sms_check_id is set
+    # 2. User calls -> SMS.ru sends webhook with status=401
+    # 3. Webhook handler sets is_verified=True AND clears sms_check_id
+    # 4. Polling detects is_verified=True with no sms_check_id -> success
+
+    # IMPORTANT: Check this FIRST before checking if sms_check_id exists!
+    # If webhook has already confirmed (is_verified=True and sms_check_id=None), we should succeed
+    if user.is_verified and not user.sms_check_id:
+        # Webhook has confirmed the call - create session if needed
+        from sqlalchemy import select
+        stmt = select(Session).where(Session.user_id == user.id)
+        result = await db.execute(stmt)
+        existing_session = result.scalars().first()
+
+        # If no active session, create one and set cookie
+        if not existing_session and response:
+            token = await create_session(db, user.id)
+            response.set_cookie(
+                key=COOKIE_NAME,
+                value=token,
+                max_age=COOKIE_MAX_AGE,
+                path=COOKIE_PATH,
+                httponly=True,
+                secure=True,
+                samesite="lax"
+            )
+            logger.info(f"[CHECK_CALL] Session created for verified user {user_phone}")
+
+        return {"verified": True, "status": "verified", "redirect": f"/card/{phone}"}
+
     # Check if there's an active sms_check_id
     if not user.sms_check_id:
-        # No active check call session
+        # No active check call session (and not verified by webhook)
         return {"verified": False, "status": "none"}
 
     # Check if check_id is expired
