@@ -60,44 +60,17 @@ COOKIE_PATH = "/"
 # ============== Page Routes (GET) ==============
 
 @router.get("/", response_class=HTMLResponse)
-async def root(request: Request, db: AsyncSession = Depends(get_async_db)):
+async def root(request: Request):
     """
-    Root endpoint - serves the main registration page or redirects to card if authenticated.
+    Root endpoint - serves the main registration page.
 
     Args:
         request: FastAPI request object (required for templates)
-        db: Database session
 
     Returns:
-        Rendered HTML template for the registration page OR redirect to card
+        Rendered HTML template for the registration page
     """
     from app.config import settings
-    from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
-
-    # 1. Проверяем, есть ли кука сессии
-    session_token = request.cookies.get(COOKIE_NAME)
-
-    if session_token:
-        try:
-            # 2. Ищем сессию в БД
-            result = await db.execute(
-                select(Session)
-                .options(selectinload(Session.user))
-                .where(Session.token == session_token)
-            )
-            session = result.scalar_one_or_none()
-
-            # 3. Если сессия найдена и валидна - редиректим на карту
-            if session and session.is_valid():
-                user = session.user
-                logger.info(f"[ROOT REDIRECT] User {user.phone} found, redirecting to card...")
-                return RedirectResponse(url=f"/card/{user.phone}", status_code=302)
-        except Exception as e:
-            logger.error(f"[ROOT REDIRECT] Error checking session: {e}")
-            pass
-
-    # 4. Если куки нет или сессия невалидна - показываем регистрацию
     return request.state.templates.TemplateResponse("index.html", {
         "request": request,
         "auth_method": settings.AUTH_METHOD
@@ -549,9 +522,7 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
         # Parse form data from SMS.ru
         form_data = await request.form()
 
-        # Log ALL received data for debugging
         logger.info(f"[WEBHOOK] Full SMS.ru data: {dict(form_data)}")
-
         # SMS.ru sends data in data[1], data[2], ... data[100] format
         # Each entry is multi-line text: type\ncheck_id\nstatus\ntimestamp
         api_id = settings.SMS_API_KEY  # Your SMS_API_KEY from SMS.ru
@@ -572,6 +543,7 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
             if form_data['hash'] != expected_hash:
                 logger.warning(f"[WEBHOOK] Hash validation failed. Expected: {expected_hash}, Got: {form_data['hash']}")
                 # Still return 100 to avoid retry loops, but log the warning
+                pass
 
         # Process each data entry
         from sqlalchemy import select
@@ -580,8 +552,6 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
         processed = False
         for key, value in form_data.items():
             if key.startswith('data['):
-                logger.info(f"[WEBHOOK] Processing {key}: {repr(value)}")
-
                 # Split into lines
                 lines = str(value).split('\n')
 
@@ -589,8 +559,6 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
                     event_type = lines[0].strip()
                     check_id = lines[1].strip()
                     status = lines[2].strip()
-
-                    logger.info(f"[WEBHOOK] Parsed: type={event_type}, check_id={check_id}, status={status}")
 
                     # Handle callcheck_status events
                     if event_type == "callcheck_status":
@@ -612,23 +580,12 @@ async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_
                                 user.sms_code_expires_at = None
                                 await db.commit()
 
-                                logger.info(f"[WEBHOOK] User {user_phone} verified via check call")
                                 processed = True
-                            else:
-                                logger.warning(f"[WEBHOOK] User not found for check_id: {check_id}")
-                        else:
-                            logger.info(f"[WEBHOOK] Check call status {status} for check_id: {check_id}")
-                            processed = True
-
-        # No valid data entries found
-        if not data_entries:
-            logger.warning(f"[WEBHOOK] No valid data entries found in webhook")
 
         # Always return 100 to confirm receipt (SMS.ru requirement)
         return PlainTextResponse(content="100")
 
     except Exception as e:
-        logger.error(f"[WEBHOOK] Error processing webhook: {str(e)}", exc_info=True)
         from fastapi.responses import PlainTextResponse
         return PlainTextResponse(content="100")
 
@@ -678,8 +635,6 @@ async def simulate_call_endpoint(
     user_phone = user.phone
 
     await db.commit()
-
-    logger.info(f"[SIMULATE] User {user_phone} verified successfully (simulated), creating session")
 
     # Create session and set cookie
     token = await create_session(db, user_id)
@@ -762,11 +717,8 @@ async def check_call_status(
 
     # IMPORTANT: Check this FIRST before checking if sms_check_id exists!
     # If webhook has already confirmed (is_verified=True and sms_check_id=None), we should succeed
-    logger.info(f"[CHECK_CALL] Checking status for {user_phone}: is_verified={user.is_verified}, sms_check_id={user.sms_check_id}")
-    logger.info(f"[CHECK_CALL] user object: id={user.id}, phone={user.phone}, is_verified={user.is_verified}, sms_check_id={user.sms_check_id}")
 
     if user.is_verified and not user.sms_check_id:
-        logger.info(f"[CHECK_CALL] Condition met: is_verified=True AND sms_check_id=None")
         # Webhook has confirmed the call - ALWAYS create/update session and set cookie
         from sqlalchemy import select
 
@@ -782,8 +734,6 @@ async def check_call_status(
         token = await create_session(db, user.id)
         await db.commit()
 
-        logger.info(f"[CHECK_CALL] Fresh session created for verified user {user_phone}, token={token[:20]}...")
-
         # ALWAYS set cookie when verified, regardless of previous session state
         if response:
             response.set_cookie(
@@ -795,10 +745,6 @@ async def check_call_status(
                 secure=True,
                 samesite="lax"
             )
-            logger.info(f"[CHECK_CALL] Cookie forced set for {user_phone}")
-            logger.info(f"[CHECK_CALL] Set-Cookie header will be sent")
-        else:
-            logger.error(f"[CHECK_CALL] CRITICAL: Response object is None, cannot set cookie for {user_phone}!")
 
         return {"verified": True, "status": "verified", "redirect": f"/card/{phone}"}
 
@@ -843,7 +789,6 @@ async def check_call_status(
                 secure=True,
                 samesite="lax"
             )
-            logger.info(f"[CHECK_CALL] Session created for verified user {user_phone}")
 
         return {"verified": True, "status": "verified", "redirect": f"/card/{phone}"}
 
@@ -884,7 +829,6 @@ async def simulate_check_call(
         - Creates session and sets cookie if verified
     """
     if not settings.SMS_TEST_MODE:
-        logger.error(f"[SIMULATE] Endpoint called in production mode for {phone}")
         raise HTTPException(status_code=403, detail="Simulation only available in test mode")
 
     user = await get_user_by_phone(db, phone)
@@ -896,13 +840,10 @@ async def simulate_check_call(
     success, message = await simulate_incoming_call(db, user)
 
     if not success:
-        logger.warning(f"[SIMULATE] Failed for {phone}: {message}")
         raise HTTPException(status_code=400, detail=message)
 
     # Commit the verification
     await db.commit()
-
-    logger.info(f"[SIMULATE] Success for {phone}, creating session")
 
     # Create session and set cookie
     token = await create_session(db, user.id)
