@@ -745,6 +745,9 @@ async def check_call_status(
         # If no active session, create one and set cookie
         if not existing_session and response:
             token = await create_session(db, user.id)
+            # Commit immediately after creating session to ensure it's saved
+            await db.commit()
+
             response.set_cookie(
                 key=COOKIE_NAME,
                 value=token,
@@ -754,7 +757,11 @@ async def check_call_status(
                 secure=True,
                 samesite="lax"
             )
-            logger.info(f"[CHECK_CALL] Session created for verified user {user_phone}")
+            logger.info(f"[CHECK_CALL] Session created for verified user {user_phone}, cookie set")
+        elif existing_session:
+            logger.info(f"[CHECK_CALL] Session already exists for user {user_phone}")
+        else:
+            logger.warning(f"[CHECK_CALL] Response object is None, cannot set cookie for {user_phone}")
 
         return {"verified": True, "status": "verified", "redirect": f"/card/{phone}"}
 
