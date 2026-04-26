@@ -1,6 +1,6 @@
 # Antoshkin Loyalty Card (PWA)
 
-> **Версия:** 2.0.0
+> **Версия:** 2.1.0
 > **Статус:** ✅ Production Ready
 > **Релиз:** [docs/done/release-2.0.0.md](docs/done/release-2.0.0.md)
 
