@@ -14,6 +14,7 @@
     <td><img src="https://github.com/user-attachments/assets/b18c224c-a2e8-4c2f-96c6-657c08710beb" width="300"></td>
   </tr>
 </table>
+
 ---
 
 ## 📱 О проекте
