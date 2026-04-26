@@ -75,12 +75,25 @@
             <!-- Card Body -->
             <div class="px-6 py-6">
                 <!-- Card Mockup Image -->
-                <div class="mb-4">
-                    <img
-                        src="/static/card-mockup.png"
-                        alt="Скидочная карта Антошкин дворик"
-                        class="w-full h-auto rounded-lg shadow-md"
-                    >
+                <div class="mb-4 flip-card-container">
+                    <div class="flip-card" id="loyaltyCard">
+                        <div class="flip-card-inner">
+                            <div class="flip-card-front">
+                                <img
+                                    src="/static/card-mockup.png"
+                                    alt="Скидочная карта Антошкин дворик"
+                                    class="w-full h-auto rounded-lg shadow-md"
+                                >
+                            </div>
+                            <div class="flip-card-back">
+                                <img
+                                    src="/static/card-mockup-map.png"
+                                    alt="Обратная сторона карты"
+                                    class="w-full h-auto rounded-lg shadow-md"
+                                >
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- User Info (left: name, right: phone) -->
@@ -152,6 +165,67 @@
      data-user-phone="{{ user.phone }}"
      class="hidden">
 </div>
+
+<style>
+/* Flip card animation styles */
+.flip-card-container {
+    perspective: 1000px;
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.flip-card {
+    width: 100%;
+    height: auto;
+    position: relative;
+    cursor: pointer;
+    transform-style: preserve-3d;
+    transition: transform 0.6s;
+    aspect-ratio: 4/3; /* Стандартное соотношение для банковских карт */
+}
+
+.flip-card.flipped {
+    transform: rotateY(180deg);
+}
+
+.flip-card-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transition: transform 0.6s;
+    transform-style: preserve-3d;
+}
+
+.flip-card-front, .flip-card-back {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    border-radius: 0.5rem;
+    overflow: visible; /* Изменяем с hidden на visible */
+}
+
+.flip-card-front {
+    z-index: 2;
+    transform: rotateY(0deg);
+}
+
+.flip-card-back {
+    transform: rotateY(180deg);
+    z-index: 1;
+}
+
+/* Ensure images maintain original size without cropping */
+.flip-card-front img, .flip-card-back img {
+    width: 100%;
+    height: auto;
+    object-fit: contain; /* Используем contain вместо cover */
+    border-radius: 0.5rem;
+    display: block;
+}
+</style>
 
 <script>
     // Get user data from data attributes (safer for VS Code syntax highlighting)
@@ -321,6 +395,19 @@
         
         // Show card content (if not redirected by checkSession)
         showCard();
+        
+        // Initialize flip card animation
+        initFlipCard();
     });
+    
+    // Flip card animation initialization
+    function initFlipCard() {
+        const flipCard = document.getElementById('loyaltyCard');
+        if (flipCard) {
+            flipCard.addEventListener('click', function() {
+                this.classList.toggle('flipped');
+            });
+        }
+    }
 </script>
 {% endblock %}
