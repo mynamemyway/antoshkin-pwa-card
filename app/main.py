@@ -47,8 +47,6 @@ async def favicon():
 
 @app.get("/apple-touch-icon.png", include_in_schema=False)
 async def apple_touch():
-    # Если в корне лежит icon-180.png, укажи его имя. 
-    # Если переименовал в apple-touch-icon.png, оставь так:
     return FileResponse(os.path.join(BASE_DIR, "apple-touch-icon.png"))
 
 @app.get("/apple-touch-icon-precomposed.png", include_in_schema=False)

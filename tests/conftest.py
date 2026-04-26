@@ -177,7 +177,7 @@ def mock_sms_failure():
 @pytest.fixture(scope="function")
 def mock_sms_code():
     """Mock SMS code generation to return fixed code."""
-    with patch('app.api.routers.generate_sms_code', return_value="1234") as mock:
+    with patch('app.services.auth_dispatcher.generate_sms_code', return_value="1234") as mock:
         yield mock
 
 

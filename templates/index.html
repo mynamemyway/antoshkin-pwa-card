@@ -15,7 +15,7 @@
            🌻 цветочный комбинат 🌻
         </h2>
         <p class="mt-2 text-sm text-gray-600">
-            <span id="headerText">Зарегистрируйтесь и получайте скидки</span>
+            <span id="headerText">Регистрируйтесь и получайте скидки</span>
         </p>
     </div>
 
@@ -99,7 +99,7 @@
     <!-- Info -->
     <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <p class="text-xs text-center text-gray-500">
-            После ввода номера вам придёт SMS с кодом подтверждения
+            После ввода попросим вас пройти бесплатную проверку номера телефона
         </p>
     </div>
 </div>
@@ -121,7 +121,7 @@
         // Check session status using global function
         // If session is valid, redirect to card; otherwise show form
         checkSession('index');
-        
+
         // Show form if not redirected (session invalid or no session)
         showForm();
     });
@@ -172,22 +172,51 @@
                 throw new Error(data.detail || 'Ошибка регистрации');
             }
 
-            // Registration successful - send SMS
-            const smsResponse = await fetch('/api/send-sms', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ phone: phone })
-            });
+            // Registration successful - initiate verification based on auth method
+            const authMethod = "{{ auth_method }}";
 
-            if (!smsResponse.ok) {
-                const smsError = await smsResponse.json();
-                throw new Error(smsError.detail || 'Ошибка отправки SMS');
+            let callPhone = null;
+
+            if (authMethod === 'check_call') {
+                // For check_call, use universal initiate endpoint which returns call_phone
+                const initResponse = await fetch('/api/auth/initiate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ phone: phone })
+                });
+
+                if (!initResponse.ok) {
+                    const initError = await initResponse.json();
+                    throw new Error(initError.detail || 'Ошибка инициализации звонка');
+                }
+
+                const initData = await initResponse.json();
+                if (initData.call_phone) {
+                    callPhone = initData.call_phone;
+                }
+            } else {
+                // For SMS/Flash Call, send verification code
+                const smsResponse = await fetch('/api/auth/initiate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ phone: phone })
+                });
+
+                if (!smsResponse.ok) {
+                    const smsError = await smsResponse.json();
+                    throw new Error(smsError.detail || 'Ошибка отправки кода');
+                }
             }
 
-            // Save phone to localStorage for auto-fill
+            // Save phone and call_phone to localStorage for auto-fill
             localStorage.setItem('phone', phone);
+            if (callPhone) {
+                localStorage.setItem('call_phone', callPhone);
+            }
 
             // Redirect to verification
             window.location.href = `/verify?phone=${encodeURIComponent(phone)}`;

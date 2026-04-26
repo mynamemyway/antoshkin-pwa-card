@@ -204,7 +204,7 @@ sudo certbot renew --dry-run --pre-hook "docker compose -f /home/mynamemyway/pro
 **Просмотр логов приложения:**
 
 ```bash
-docker compose logs -f app
+docker-compose logs -f app
 ```
 
 **Просмотр логов nginx:**
@@ -289,6 +289,7 @@ Cтандартный цикл обновления любого Docker-прое
 1. **Перейди в папку проекта на сервере:**
 ```bash
 cd ~/projects/antoshkin-pwa-card
+cd projects/antoshkin-pwa-card
 ```
 
 2. **Затяни изменения из GitHub:**

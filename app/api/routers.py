@@ -13,16 +13,20 @@ Defines all HTTP endpoints for:
 
 import csv
 import io
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
+logger = logging.getLogger(__name__)
+
 from app.database import get_db, get_async_db
 from app.models import User, Session
+from app.config import settings
 from app.schemas import (
     UserCreate,
     UserOut,
@@ -36,12 +40,9 @@ from app.services.crud import (
     get_user_by_phone,
     create_user,
 )
-from app.services.sms_service import (
-    generate_sms_code,
-    send_sms,
-    verify_sms_code,
-    set_user_sms_code,
-)
+from app.services.auth_dispatcher import send_verification_code
+from app.services.sms_service import verify_sms_code
+from app.services.check_call_service import verify_check_call_status, initiate_check_call, simulate_incoming_call
 from app.services.session_service import (
     create_session,
     get_session_by_token,
@@ -69,7 +70,11 @@ async def root(request: Request):
     Returns:
         Rendered HTML template for the registration page
     """
-    return request.state.templates.TemplateResponse("index.html", {"request": request})
+    from app.config import settings
+    return request.state.templates.TemplateResponse("index.html", {
+        "request": request,
+        "auth_method": settings.AUTH_METHOD
+    })
 
 
 @router.get("/splash", response_class=HTMLResponse)
@@ -97,7 +102,14 @@ async def verify_page(request: Request):
     Returns:
         Rendered HTML template for the verification page
     """
-    return request.state.templates.TemplateResponse("verify.html", {"request": request})
+    from app.config import settings
+    return request.state.templates.TemplateResponse("verify.html", {
+        "request": request,
+        "auth_method": settings.AUTH_METHOD,
+        "sms_test_mode": settings.SMS_TEST_MODE,
+        # Номер телефона для звонка будет получен из localStorage (сохранён после /api/auth/initiate)
+        "call_phone": None,
+    })
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -123,34 +135,34 @@ async def admin_panel(
     """
     # Ensure page is at least 1
     page = max(1, page)
-    
+
     # Build base query with search filter
     stmt = select(User)
     if search:
         stmt = stmt.where(User.phone.ilike(f"%{search}%"))
-    
+
     # Get total count (before pagination)
     count_stmt = select(func.count()).select_from(User)
     if search:
         count_stmt = count_stmt.where(User.phone.ilike(f"%{search}%"))
-    
+
     total_result = await db.execute(count_stmt)
     total = total_result.scalar()
-    
+
     # Calculate offset and total pages
     offset = (page - 1) * per_page
     total_pages = (total + per_page - 1) // per_page if total > 0 else 1
-    
+
     # Get users for current page (ordered by created_at desc)
     stmt = stmt.order_by(User.created_at.desc()).offset(offset).limit(per_page)
     result = await db.execute(stmt)
     users = result.scalars().all()
-    
+
     # Get verified count (from entire database, not just filtered)
     verified_stmt = select(func.count()).select_from(User).where(User.is_verified == True)
     verified_result = await db.execute(verified_stmt)
     verified_count = verified_result.scalar() or 0
-    
+
     return request.state.templates.TemplateResponse(
         "admin.html",
         {
@@ -171,25 +183,25 @@ async def admin_panel(
 async def export_users(request: Request, db: AsyncSession = Depends(get_async_db)):
     """
     Export all users to CSV file.
-    
+
     Args:
         request: FastAPI request object
         db: AsyncSession database session
-    
+
     Returns:
         CSV file with user data for download
     """
     stmt = select(User).order_by(User.created_at.desc())
     result = await db.execute(stmt)
     users = result.scalars().all()
-    
+
     # Create CSV in memory
     output = io.StringIO()
     writer = csv.writer(output)
-    
+
     # Write header
     writer.writerow(['id', 'full_name', 'phone', 'is_verified', 'created_at'])
-    
+
     # Write user data
     for user in users:
         writer.writerow([
@@ -199,11 +211,11 @@ async def export_users(request: Request, db: AsyncSession = Depends(get_async_db
             user.is_verified,
             user.created_at.isoformat()
         ])
-    
+
     # Create response with CSV file
     csv_content = output.getvalue()
     output.close()
-    
+
     return StreamingResponse(
         io.BytesIO(csv_content.encode('utf-8')),
         media_type="text/csv",
@@ -215,27 +227,27 @@ async def export_users(request: Request, db: AsyncSession = Depends(get_async_db
 async def card_page(request: Request, phone: str, db: AsyncSession = Depends(get_async_db)):
     """
     Display user's loyalty card with QR code.
-    
+
     Args:
         request: FastAPI request object
         phone: Normalized phone number
         db: AsyncSession database session
-    
+
     Returns:
         Rendered card HTML template (only for verified users)
     """
     user = await get_user_by_phone(db, phone)
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     if not user.is_verified:
         # Redirect to verification page if not verified
         return request.state.templates.TemplateResponse(
             "verify.html",
             {"request": request, "phone": phone}
         )
-    
+
     return request.state.templates.TemplateResponse(
         "card.html",
         {"request": request, "user": user}
@@ -281,41 +293,76 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_async_d
         raise HTTPException(status_code=500, detail="Failed to create user")
 
 
-@router.post("/api/send-sms", response_model=SMSResponse)
-async def send_sms_endpoint(sms_data: SMSRequest, db: AsyncSession = Depends(get_async_db)):
+@router.post("/api/auth/initiate", response_model=SMSResponse)
+async def initiate_auth_endpoint(
+    sms_data: SMSRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_async_db)
+):
     """
-    Send SMS verification code to user.
+    Универсальный эндпоинт для инициации любой авторизации (SMS, Flash Call, Check Call).
+
+    Автоматически выбирает метод на основе AUTH_METHOD в конфиге.
 
     Args:
-        sms_data: Phone number for SMS delivery
+        sms_data: Phone number for verification
+        request: FastAPI request object (for IP extraction)
         db: AsyncSession database session
 
     Returns:
-        {"sent": true} if SMS was sent successfully
+        {
+            "sent": true,
+            "call_phone": str (только для check_call)
+        }
 
     Raises:
-        HTTPException: If user not found or SMS failed
+        HTTPException: If user not found or initiation failed
+
+    Note:
+        - Для check_call: делает запрос к SMS.ru, сохраняет check_id, НЕ верифицирует
+        - Для SMS/Flash Call: отправляет код пользователю
+        - В тестовом режиме check_call НЕ делает автосимуляцию - это делается через /api/auth/simulate-call
     """
     user = await get_user_by_phone(db, sms_data.phone)
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Generate code
-    code = generate_sms_code()
+    # Handle Check Call mode
+    if settings.AUTH_METHOD == "check_call":
+        success, check_id, message, call_phone = await initiate_check_call(db, user, user.phone)
 
-    # Send SMS FIRST (atomic: don't save code if SMS fails)
-    sms_sent, message = await send_sms(user.phone, code)
+        if not success:
+            raise HTTPException(status_code=500, detail=message)
 
-    if not sms_sent:
-        raise HTTPException(status_code=500, detail="Failed to send SMS")
+        # ВАЖНО: В тестовом режиме НЕ делаем автосимуляцию!
+        # Симуляция вызывается отдельно через /api/auth/simulate-call когда пользователь нажмёт "Позвонить"
+        logger.info(f"[API] Check call initiated for {user.phone}, check_id: {check_id}")
+        await db.commit()
 
-    # SMS sent successfully - save code to database
+        # Возвращаем call_phone для фронтенда
+        return SMSResponse(sent=True, call_phone=call_phone)
+
+    # SMS/Flash Call mode: use dispatcher service
+    success, code, message = await send_verification_code(user.phone, request)
+
+    if not success:
+        raise HTTPException(status_code=500, detail=message)
+
+    # Save verification data to database
     user.sms_code = code
     user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+
     await db.commit()
 
     return SMSResponse(sent=True)
+
+
+# Оставляем старый путь для обратной совместимости (redirect)
+@router.post("/api/send-sms", response_model=SMSResponse, deprecated=True)
+async def send_sms_endpoint_deprecated(sms_data: SMSRequest, request: Request, db: AsyncSession = Depends(get_async_db)):
+    """Deprecated: используйте /api/auth/initiate вместо этого."""
+    return await initiate_auth_endpoint(sms_data, request, db)
 
 
 @router.post("/api/verify", response_model=VerifyResponse)
@@ -348,7 +395,15 @@ async def verify_code(
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
     # Verify SMS code using service function
-    success, message = await verify_sms_code(db, user, verify_data.code)
+    result = await verify_sms_code(db, user, verify_data.code)
+
+    # Unpack result (now includes user_id)
+    if len(result) == 3:
+        success, message, user_id = result
+    else:
+        # Fallback for backward compatibility (should not happen)
+        success, message = result
+        user_id = user.id
 
     if not success:
         # Map service messages to HTTP status codes
@@ -359,10 +414,7 @@ async def verify_code(
         else:
             raise HTTPException(status_code=400, detail=message)
 
-    # Save user_id BEFORE commit (user becomes expired after commit in async)
-    user_id = user.id
-
-    # Create session and set cookie
+    # Create session and set cookie using saved user_id
     token = await create_session(db, user_id)
 
     # Set HttpOnly cookie
@@ -383,28 +435,30 @@ async def verify_code(
 @router.post("/api/login")
 async def login(
     sms_data: SMSRequest,
+    request: Request,
     db: AsyncSession = Depends(get_async_db),
     response: Response = None
 ):
     """
     Login by phone number.
-    
+
     Logic:
     - Check if phone exists in database
     - If found (any status): send SMS code, return 200 OK (redirect to verify)
     - If not found: return 404 Not Found (frontend should trigger registration)
-    
+
     Args:
         sms_data: Phone number for login
+        request: FastAPI request object (for IP extraction)
         db: AsyncSession database session
         response: FastAPI response object
-    
+
     Returns:
         {"sent": true} if SMS was sent successfully
-    
+
     Raises:
         HTTPException: 404 if user not found (trigger registration)
-    
+
     Usage (Frontend):
         # Try to login
         const response = await fetch('/api/login', {
@@ -412,7 +466,7 @@ async def login(
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({phone: '+79991234567'})
         });
-        
+
         if (response.status === 404) {
             // User not found - start registration flow
         } else if (response.ok) {
@@ -421,30 +475,397 @@ async def login(
     """
     # Find user by phone
     user = await get_user_by_phone(db, sms_data.phone)
-    
+
     if not user:
         # User not found - frontend should trigger registration
         raise HTTPException(status_code=404, detail="User not found")
 
-    # User exists - send SMS code (for both verified and not verified)
-    # This handles Scenario 3 (verified, no cookie) and Scenario 4 (not verified)
+    # Используем универсальный эндпоинт /api/auth/initiate для всех методов
+    # Для check_call это инициирует звонок, для SMS/Flash Call - отправит код
+    return await initiate_auth_endpoint(sms_data, request, db)
 
-    # Generate code
-    code = generate_sms_code()
 
-    # Send SMS FIRST (atomic: don't save code if SMS fails)
-    sms_sent, message = await send_sms(user.phone, code)
+# ============== Check Call Webhook ==============
 
-    if not sms_sent:
-        raise HTTPException(status_code=500, detail="Failed to send SMS")
+@router.post("/api/auth/webhook/sms-ru")
+async def sms_ru_webhook(request: Request, db: AsyncSession = Depends(get_async_db)):
+    """
+    Webhook endpoint for SMS.ru Check Call notifications.
 
-    # SMS sent successfully - save code to database
-    user.sms_code = code
-    user.sms_code_expires_at = datetime.utcnow() + timedelta(minutes=5)
+    Receives automatic notifications from SMS.ru when a user completes a check call.
+    Updates user verification status based on webhook data.
+
+    Expected POST data from SMS.ru (form-data):
+        - data[N]: Multi-line text entries
+          Line 1: Event type (callcheck_status)
+          Line 2: check_id
+          Line 3: status (401 = verified)
+          Line 4: unix timestamp
+        - hash: SHA256 hash for validation
+
+    Response format from SMS.ru:
+        Check call status sent as form data in data[1], data[2], ... data[100].
+
+    Args:
+        request: FastAPI request object (for form data)
+        db: AsyncSession database session
+
+    Returns:
+        Plain text "100" to confirm successful processing (SMS.ru requirement)
+
+    Note:
+        SMS.ru sends this webhook when user completes the check call.
+        Server marks user as verified and clears sms_check_id.
+        IMPORTANT: Must return "100" as plain text, not JSON!
+    """
+    try:
+        # Parse form data from SMS.ru
+        form_data = await request.form()
+
+        logger.info(f"[WEBHOOK] Full SMS.ru data: {dict(form_data)}")
+        # SMS.ru sends data in data[1], data[2], ... data[100] format
+        # Each entry is multi-line text: type\ncheck_id\nstatus\ntimestamp
+        api_id = settings.SMS_API_KEY  # Your SMS_API_KEY from SMS.ru
+
+        # Collect all data entries for hash validation
+        data_entries = []
+        for key, value in form_data.items():
+            if key.startswith('data['):
+                data_entries.append(str(value))
+
+        # Validate hash if present
+        if 'hash' in form_data and data_entries:
+            import hashlib
+            # Hash is computed from api_id + concatenation of ALL data entries
+            hash_string = api_id + ''.join(data_entries)
+            expected_hash = hashlib.sha256(hash_string.encode()).hexdigest()
+
+            if form_data['hash'] != expected_hash:
+                logger.warning(f"[WEBHOOK] Hash validation failed. Expected: {expected_hash}, Got: {form_data['hash']}")
+                # Still return 100 to avoid retry loops, but log the warning
+                pass
+
+        # Process each data entry
+        from sqlalchemy import select
+        from fastapi.responses import PlainTextResponse
+
+        processed = False
+        for key, value in form_data.items():
+            if key.startswith('data['):
+                # Split into lines
+                lines = str(value).split('\n')
+
+                if len(lines) >= 3:
+                    event_type = lines[0].strip()
+                    check_id = lines[1].strip()
+                    status = lines[2].strip()
+
+                    # Handle callcheck_status events
+                    if event_type == "callcheck_status":
+                        # Check if status indicates successful verification (401 = verified)
+                        if status == "401":
+                            # Find user by check_id
+                            stmt = select(User).where(User.sms_check_id == check_id)
+                            result = await db.execute(stmt)
+                            user = result.scalar_one_or_none()
+
+                            if user:
+                                # Save phone before commit to avoid lazy loading issues
+                                user_phone = user.phone
+
+                                # Mark user as verified
+                                user.is_verified = True
+                                user.sms_check_id = None  # Clear check_id after successful verification
+                                user.sms_code = None
+                                user.sms_code_expires_at = None
+                                await db.commit()
+
+                                processed = True
+
+        # Always return 100 to confirm receipt (SMS.ru requirement)
+        return PlainTextResponse(content="100")
+
+    except Exception as e:
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(content="100")
+
+
+@router.post("/api/auth/simulate-call")
+async def simulate_call_endpoint(
+    sms_data: SMSRequest,
+    db: AsyncSession = Depends(get_async_db),
+    response: Response = None
+):
+    """
+    Симуляция входящего звонка в тестовом режиме (SMS_TEST_MODE=True).
+
+    Этот эндпоинт вызывается когда пользователь нажимает кнопку "Позвонить" на фронтенде.
+    Он эмулирует webhook от SMS.ru: находит пользователя по sms_check_id и верифицирует его.
+
+    Args:
+        sms_data: Phone number
+        db: AsyncSession database session
+        response: FastAPI response object (for setting cookie)
+
+    Returns:
+        {"success": true, "message": "OK", "verified": true, "redirect": "/card/{phone}"} если симуляция успешна
+
+    Raises:
+        HTTPException: 400 если не тестовый режим или нет активного check_id
+    """
+    if not settings.SMS_TEST_MODE:
+        raise HTTPException(status_code=400, detail="Simulation only available in test mode")
+
+    user = await get_user_by_phone(db, sms_data.phone)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not user.sms_check_id:
+        raise HTTPException(status_code=400, detail="No active check session. Please initiate call first.")
+
+    # Используем сервисный метод для симуляции (передаём phone явно, чтобы избежать lazy loading)
+    success, message = await simulate_incoming_call(db, user, sms_data.phone)
+
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    # Сохраняем user.id ДО коммита, чтобы избежать lazy loading после commit
+    user_id = user.id
+    user_phone = user.phone
+
     await db.commit()
 
-    return SMSResponse(sent=True)
+    # Create session and set cookie
+    token = await create_session(db, user_id)
+    if response:
+        response.set_cookie(
+            key=COOKIE_NAME,
+            value=token,
+            max_age=COOKIE_MAX_AGE,
+            path=COOKIE_PATH,
+            httponly=True,
+            secure=True,
+            samesite="lax"
+        )
 
+    return {
+        "success": True,
+        "message": "OK",
+        "verified": True,
+        "redirect": f"/card/{sms_data.phone}"
+    }
+
+
+@router.get("/api/auth/check-call-status")
+async def check_call_status(
+    phone: str,
+    db: AsyncSession = Depends(get_async_db),
+    response: Response = None
+):
+    """
+    Check verification status for Check Call method (polling endpoint).
+
+    Frontend polls this endpoint every 2-3 seconds to detect when
+    the webhook has updated the user's verification status.
+
+    If user is verified and no session exists, creates a new session and sets cookie.
+
+    IMPORTANT: This endpoint ONLY checks the status of the active sms_check_id.
+    It does NOT check user.is_verified flag to prevent bypassing the call verification.
+    Even if user.is_verified=True from a previous session, we must wait for the
+    webhook to confirm the NEW call before creating a session.
+
+    Args:
+        phone: Normalized phone number (+7XXXXXXXXXX)
+        db: AsyncSession database session
+        response: FastAPI response object (for setting cookie)
+
+    Returns:
+        {
+            "verified": bool,
+            "status": str,  # "pending", "verified", "expired"
+            "redirect": str  # "/card/{phone}" if verified
+        }
+
+    Usage (Frontend):
+        const response = await fetch('/api/auth/check-call-status?phone=+79991234567');
+        const data = await response.json();
+        if (data.verified) {
+            // Redirect to card page
+        }
+    """
+    user = await get_user_by_phone(db, phone)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Explicitly load phone to avoid lazy loading issues in async context
+    user_phone = user.phone
+
+    # CRITICAL: Do NOT check user.is_verified here!
+    # We must only verify based on the current sms_check_id status.
+    # The webhook is the only source of truth for call verification.
+    # This prevents bypassing the call by having is_verified=True from a previous session.
+
+    # Check if user was verified by webhook (is_verified=True AND sms_check_id was cleared)
+    # The webhook flow is:
+    # 1. User initiates call -> sms_check_id is set
+    # 2. User calls -> SMS.ru sends webhook with status=401
+    # 3. Webhook handler sets is_verified=True AND clears sms_check_id
+    # 4. Polling detects is_verified=True with no sms_check_id -> success
+
+    # IMPORTANT: Check this FIRST before checking if sms_check_id exists!
+    # If webhook has already confirmed (is_verified=True and sms_check_id=None), we should succeed
+
+    if user.is_verified and not user.sms_check_id:
+        # Webhook has confirmed the call - ALWAYS create/update session and set cookie
+        from sqlalchemy import select
+
+        # Delete any existing sessions to ensure clean state
+        stmt = select(Session).where(Session.user_id == user.id)
+        result = await db.execute(stmt)
+        existing_sessions = result.scalars().all()
+
+        for old_session in existing_sessions:
+            await db.delete(old_session)
+
+        # Create fresh session
+        token = await create_session(db, user.id)
+        await db.commit()
+
+        # ALWAYS set cookie when verified, regardless of previous session state
+        if response:
+            response.set_cookie(
+                key=COOKIE_NAME,
+                value=token,
+                max_age=COOKIE_MAX_AGE,
+                path=COOKIE_PATH,
+                httponly=True,
+                secure=True,
+                samesite="lax"
+            )
+
+        return {"verified": True, "status": "verified", "redirect": f"/card/{phone}"}
+
+    # Check if there's an active sms_check_id
+    if not user.sms_check_id:
+        # No active check call session (and not verified by webhook)
+        return {"verified": False, "status": "none"}
+
+    # Check if check_id is expired
+    if user.sms_code_expires_at:
+        if datetime.utcnow() > user.sms_code_expires_at:
+            return {"verified": False, "status": "expired"}
+
+    # Check if user was verified by webhook (is_verified=True AND sms_check_id was cleared)
+    # But since we're still checking status, sms_check_id should still be present until webhook clears it
+    # The webhook sets is_verified=True AND clears sms_check_id
+    # So if is_verified=True but sms_check_id is still set, we're still waiting for webhook confirmation
+
+    # Actually, the webhook flow is:
+    # 1. User initiates call -> sms_check_id is set
+    # 2. User calls -> SMS.ru sends webhook with status=401
+    # 3. Webhook handler sets is_verified=True AND clears sms_check_id
+    # 4. Polling detects is_verified=True with no sms_check_id -> success
+
+    # So we need to check: is_verified=True means webhook confirmed the call
+    if user.is_verified and not user.sms_check_id:
+        # Webhook has confirmed the call - create session if needed
+        from sqlalchemy import select
+        stmt = select(Session).where(Session.user_id == user.id)
+        result = await db.execute(stmt)
+        existing_session = result.scalars().first()
+
+        # If no active session, create one and set cookie
+        if not existing_session and response:
+            token = await create_session(db, user.id)
+            response.set_cookie(
+                key=COOKIE_NAME,
+                value=token,
+                max_age=COOKIE_MAX_AGE,
+                path=COOKIE_PATH,
+                httponly=True,
+                secure=True,
+                samesite="lax"
+            )
+
+        return {"verified": True, "status": "verified", "redirect": f"/card/{phone}"}
+
+    # Still waiting for webhook confirmation (sms_check_id exists, is_verified may be old value)
+    return {"verified": False, "status": "pending"}
+
+
+@router.post("/api/auth/simulate-check-call")
+async def simulate_check_call(
+    phone: str,
+    db: AsyncSession = Depends(get_async_db),
+    response: Response = None
+):
+    """
+    Simulate incoming check call in test mode (emulates SMS.ru webhook).
+
+    This endpoint is called by frontend when user clicks "Позвонить" button.
+    Only works in test mode (SMS_TEST_MODE=True).
+
+    Args:
+        phone: Normalized phone number (+7XXXXXXXXXX)
+        db: AsyncSession database session
+        response: FastAPI response object (for setting cookie)
+
+    Returns:
+        {
+            "success": bool,
+            "message": str,
+            "verified": bool,
+            "redirect": str (if verified)
+        }
+
+    Logic:
+        - Checks if test mode is enabled
+        - Finds user by phone
+        - Calls simulate_incoming_call service function
+        - Commits changes to database
+        - Creates session and sets cookie if verified
+    """
+    if not settings.SMS_TEST_MODE:
+        raise HTTPException(status_code=403, detail="Simulation only available in test mode")
+
+    user = await get_user_by_phone(db, phone)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Simulate incoming call (emulates webhook)
+    success, message = await simulate_incoming_call(db, user)
+
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    # Commit the verification
+    await db.commit()
+
+    # Create session and set cookie
+    token = await create_session(db, user.id)
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        max_age=COOKIE_MAX_AGE,
+        path=COOKIE_PATH,
+        httponly=True,
+        secure=True,
+        samesite="lax"
+    )
+
+    return {
+        "success": True,
+        "message": message,
+        "verified": True,
+        "redirect": f"/card/{phone}"
+    }
+
+
+# ============== Session API Routes ==============
 
 @router.post("/api/logout")
 async def logout(
@@ -453,26 +874,26 @@ async def logout(
 ):
     """
     Logout user (delete session).
-    
+
     Logic:
     - Get session token from cookie
     - Delete session from database
     - Clear cookie in browser
-    
+
     Args:
         request: FastAPI request object (for cookie access)
         db: AsyncSession database session
-    
+
     Returns:
         {"success": true} if logged out successfully
     """
     # Get token from cookie
     token = request.cookies.get(COOKIE_NAME)
-    
+
     if token:
         # Delete session from database
         await delete_session(db, token)
-    
+
     # Create response with cookie cleared
     response = Response(content='{"success": true}')
     response.delete_cookie(
@@ -482,7 +903,7 @@ async def logout(
         secure=True,
         samesite="lax"
     )
-    
+
     return response
 
 
@@ -493,27 +914,27 @@ async def get_current_user(
 ):
     """
     Get current authenticated user.
-    
+
     Logic:
     - Middleware already validated session and set request.state.current_user
     - Just return the user if authenticated
-    
+
     Args:
         request: FastAPI request object (for cookie access)
         db: AsyncSession database session
-    
+
     Returns:
         User data if authenticated
-    
+
     Raises:
         HTTPException: 401 Unauthorized if not authenticated
-    
+
     Usage (Frontend):
         # Check if user is authenticated
         const response = await fetch('/api/me', {
             credentials: 'include'  // Send cookies automatically
         });
-        
+
         if (response.ok) {
             const user = await response.json();
             // User is authenticated
@@ -523,9 +944,9 @@ async def get_current_user(
     """
     # Get user from request.state (injected by middleware)
     user = request.state.current_user
-    
+
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     # Return user data
     return user

@@ -9,3 +9,4 @@ requests==2.32.3
 aiosqlite==0.20.0
 httpx==0.26.0
 greenlet==3.1.1
+python-multipart==0.0.26

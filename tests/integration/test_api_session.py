@@ -34,6 +34,8 @@ class TestApiLogin:
     @pytest.mark.asyncio
     async def test_login_saves_code(self, client, test_user, mock_sms_success, db):
         """Вход сохраняет код в БД."""
+        from app.config import settings
+
         response = client.post("/api/login", json={
             "phone": test_user.phone
         })
@@ -43,7 +45,12 @@ class TestApiLogin:
         # Verify code is saved
         result = await db.execute(select(User).where(User.phone == test_user.phone))
         db_user = result.scalar_one_or_none()
-        assert db_user.sms_code is not None
+
+        # For check_call mode: sms_check_id should be saved (not sms_code)
+        if settings.AUTH_METHOD == "check_call":
+            assert db_user.sms_check_id is not None, "sms_check_id should be saved for check_call"
+        else:
+            assert db_user.sms_code is not None
 
 
 class TestApiLogout:

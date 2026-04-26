@@ -9,28 +9,129 @@
     <!-- Header -->
     <div class="sm:mx-auto sm:w-full sm:max-w-md text-center mb-8">
         <h1 class="text-3xl font-bold text-gray-900">
-            Подтверждение кода
+            {% if auth_method == "check_call" %}
+                Авторизация
+            {% elif auth_method == "call" %}
+                Подтверждение кода
+            {% else %}
+                Подтверждение кода
+            {% endif %}
         </h1>
+        {% if auth_method == "check_call" %}
+        <p class="mt-2 text-sm text-gray-600">
+            Совершите бесплатный звонок для автоматической проверки телефона:
+        </p>
+        {% elif auth_method == "call" %}
+        <p class="mt-2 text-sm text-gray-600">
+            Вам поступит звонок. Введите последние 4 цифры входящего номера
+        </p>
+        {% else %}
         <p class="mt-2 text-sm text-gray-600">
             Введите 4-значный код из SMS
         </p>
+        {% endif %}
         <p class="mt-1 text-xs text-gray-500">
-            Номер: <span id="phoneDisplay" class="font-medium"></span>
+            <span id="phoneDisplay" class="font-medium"></span>
         </p>
     </div>
 
     <!-- Verification Form -->
     <div class="sm:mx-auto sm:w-full sm:max-w-md">
         <div class="bg-white py-8 px-6 shadow rounded-lg sm:px-10">
+            {% if auth_method == "check_call" %}
+            <!-- Check Call Mode: Call button instead of code input -->
+            <div id="checkCallForm" class="space-y-6">
+                <!-- Hidden phone field -->
+                <input type="hidden" id="phone" name="phone">
+
+                <!-- Call Button -->
+                <div class="text-center">
+                    <a
+                        id="callButton"
+                        href="#"
+                        class="inline-flex items-center justify-center py-3 px-6 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-primary hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors"
+                        onclick="initiateCall()"
+                    >
+                        <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+                        </svg>
+                        Позвонить
+                    </a>
+                    <p class="mt-3 text-xs text-gray-500">
+                        Нажмите кнопку и система сама всё сделает
+                    </p>
+                </div>
+
+                <!-- Phone to Call Display (shown after initiation) -->
+                <div id="callPhoneDisplay" class="hidden text-center">
+                    <p class="text-sm text-gray-600 mb-2">🎁</p>
+                    <a id="callPhoneLink" href="#" class="text-2xl font-bold text-primary hover:text-primary-dark">
+                        +7 (800) 500-8275
+                    </a>
+                    <p class="text-xs text-gray-500 mt-2">После успешного соединения звонок будет завершён и вы увидите вашу карту лояльности</p>
+                </div>
+
+                <!-- Waiting Status -->
+                <div id="waitingStatus" class="hidden text-center">
+                    <div class="flex justify-center mb-4">
+                        <svg class="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </div>
+                    <p class="text-sm text-gray-600">Ожидаем подтверждения...</p>
+                    <p class="text-xs text-gray-500 mt-1">После звонка вы будете автоматически перенаправлены</p>
+                </div>
+
+                <!-- Error Message -->
+                <div id="errorMessage" class="hidden">
+                    <div class="rounded-md bg-red-50 p-4">
+                        <div class="flex">
+                            <div class="ml-3">
+                                <h3 class="text-sm font-medium text-red-800" id="errorText"></h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Success Message -->
+                <div id="successMessage" class="hidden">
+                    <div class="rounded-md bg-green-50 p-4">
+                        <div class="flex">
+                            <div class="ml-3">
+                                <h3 class="text-sm font-medium text-green-800" id="successText"></h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Retry Button -->
+                <div class="hidden" id="retryContainer">
+                    <button
+                        onclick="handleResend()"
+                        class="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors"
+                    >
+                        Повторить попытку
+                    </button>
+                </div>
+            </div>
+            {% else %}
+            <!-- SMS/Flash Call Mode: Code input form -->
             <form id="verifyForm" class="space-y-6" onsubmit="handleVerify(event)">
                 <!-- Hidden phone field -->
                 <input type="hidden" id="phone" name="phone">
 
                 <!-- SMS Code Field -->
                 <div>
+                    {% if auth_method == "call" %}
+                    <label for="code" class="block text-sm font-medium text-gray-700 text-center">
+                        Код из звонка
+                    </label>
+                    {% else %}
                     <label for="code" class="block text-sm font-medium text-gray-700 text-center">
                         Код из SMS
                     </label>
+                    {% endif %}
                     <div class="mt-2 flex justify-center">
                         <input
                             id="code"
@@ -42,7 +143,11 @@
                             required
                             autofocus
                             placeholder="0000"
+                            {% if auth_method == "call" %}
+                            title="Введите последние 4 цифры номера"
+                            {% else %}
                             title="Введите код из SMS"
+                            {% endif %}
                             class="appearance-none block w-32 px-3 py-3 text-center text-2xl font-mono border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
                             oninput="this.value = this.value.replace(/[^0-9]/g, '')"
                         >
@@ -92,8 +197,10 @@
                     </button>
                 </div>
             </form>
+            {% endif %}
 
-            <!-- Resend Code -->
+            <!-- Resend Code (only for SMS/Flash Call) -->
+            {% if auth_method != "check_call" %}
             <div class="mt-6">
                 <div class="relative">
                     <div class="absolute inset-0 flex items-center">
@@ -120,49 +227,215 @@
                     </p>
                 </div>
             </div>
+            {% endif %}
         </div>
     </div>
 
     <!-- Info -->
     <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        {% if auth_method == "sms" %}
         <p class="text-xs text-center text-gray-500">
             Проверьте папку «Спам», если не получили SMS
         </p>
+        {% elif auth_method == "check_call" %}
+        <p class="text-xs text-center text-gray-500">
+            Звонок абсолютно бесплатный даже из-за рубежа!
+        </p>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    // Global variables for both modes
     let timeLeft = 300; // 5 minutes in seconds
     let timerInterval;
     let resendAvailable = false;
 
+    // Check Call specific variables
+    let pollingInterval;
+    let callPhone = '';
+
+    // Global auth method variable (accessible to all functions)
+    const authMethod = "{{ auth_method }}";
+    const smsTestMode = {{ sms_test_mode|tojson }};
+    const callPhoneGlobal = "{{ call_phone }}";
+
     // Initialize page
     document.addEventListener('DOMContentLoaded', function() {
-        // Check session status using global function
-        // If user already has valid session, redirect to card
-        checkSession('verify');
-
-        // Get phone from URL query parameter
+        // Get phone from URL query parameter FIRST (before any session check)
         const urlParams = new URLSearchParams(window.location.search);
         const phone = urlParams.get('phone');
 
         if (!phone) {
             // No phone in URL - redirect to registration
             window.location.href = '/';
-        } else {
-            // Display phone and store in hidden field
-            document.getElementById('phone').value = phone;
-            document.getElementById('phoneDisplay').textContent = formatPhone(phone);
+            return;
         }
 
-        // Start timer on page load
-        startTimer();
+        // Display phone and store in hidden field
+        document.getElementById('phone').value = phone;
+        document.getElementById('phoneDisplay').textContent = formatPhone(phone);
 
-        // Focus on code input
-        document.getElementById('code').focus();
+        // Initialize based on auth method
+        if (authMethod === 'check_call') {
+            // Check Call mode: get call_phone from localStorage (saved after /api/auth/initiate)
+            const storedCallPhone = localStorage.getItem('call_phone');
+
+            if (storedCallPhone) {
+                // Display the phone number to call immediately
+                const callPhoneDisplay = document.getElementById('callPhoneDisplay');
+                const callPhoneLink = document.getElementById('callPhoneLink');
+
+                const formattedPhone = formatPhone(storedCallPhone);
+                callPhoneLink.textContent = formattedPhone;
+                callPhoneLink.href = `tel:${storedCallPhone}`;
+                callPhoneDisplay.classList.remove('hidden');
+            }
+
+            // Start polling immediately when page loads (сразу на странице верификации)
+            startStatusPolling();
+        } else {
+            // SMS/Flash Call mode: check session, then start timer
+            // checkSession('verify');
+            startTimer();
+            // Focus on code input
+            document.getElementById('code').focus();
+        }
     });
+
+    // ============== Check Call Functions ==============
+
+    // Initiate check call when user clicks the call button
+    async function initiateCall() {
+        const callButton = document.getElementById('callButton');
+        const waitingStatus = document.getElementById('waitingStatus');
+        const errorMessage = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+        const retryContainer = document.getElementById('retryContainer');
+        const callPhoneDisplay = document.getElementById('callPhoneDisplay');
+        const callPhoneLink = document.getElementById('callPhoneLink');
+        const phone = document.getElementById('phone').value;
+
+        // Hide error messages
+        errorMessage.classList.add('hidden');
+        retryContainer.classList.add('hidden');
+
+        // Disable button and show waiting status
+        callButton.style.pointerEvents = 'none';
+        callButton.style.opacity = '0.5';
+        waitingStatus.classList.remove('hidden');
+
+        try {
+            if (smsTestMode === true) {
+                // Test mode: simulate incoming call for instant verification
+                const response = await fetch('/api/auth/simulate-call', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        phone: phone
+                    }),
+                    credentials: 'include'  // Important: accept cookies from server
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Ошибка инициализации звонка');
+                }
+
+                // Success - instant verification in test mode, redirect immediately
+                localStorage.setItem('phone', phone);
+                window.location.replace(`/card/${encodeURIComponent(phone)}`);
+
+            } else {
+                // Production mode: trigger actual phone call, then start polling
+                // Get the phone number to call from localStorage
+                const numberToCall = localStorage.getItem('call_phone');
+
+                if (!numberToCall) {
+                    throw new Error('Номер для звонка не найден. Попробуйте начать заново.');
+                }
+
+                // Trigger the phone call immediately
+                window.location.href = `tel:${numberToCall}`;
+
+                // Hide the call button and show waiting status
+                callButton.style.display = 'none';
+                callPhoneDisplay.classList.remove('hidden');;
+                // Start polling for verification status after user makes the call (после кнопки "Позвонить")
+                // startStatusPolling();
+            }
+
+        } catch (error) {
+            // Show error message
+            errorText.textContent = error.message;
+            errorMessage.classList.remove('hidden');
+
+            // Re-enable button
+            callButton.style.pointerEvents = 'auto';
+            callButton.style.opacity = '1';
+            waitingStatus.classList.add('hidden');
+            retryContainer.classList.remove('hidden');
+        }
+    }
+
+    // Poll server for verification status (simple polling approach)
+    function startStatusPolling() {
+        const phone = document.getElementById('phone').value;
+
+        pollingInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`/api/auth/check-call-status?phone=${encodeURIComponent(phone)}`, {
+                    credentials: 'include'  // Important: accept cookies from server
+                });
+                const data = await response.json();
+
+                if (data.verified) {
+                    // User is verified - redirect to card page
+                    clearInterval(pollingInterval);
+                    localStorage.setItem('phone', phone);
+                    // Use replace to prevent back button from returning to verify page
+                    window.location.replace(`/card/${encodeURIComponent(phone)}`);
+                } else if (data.status === 'expired') {
+                    // Check call expired
+                    clearInterval(pollingInterval);
+                    showError('Время ожидания звонка истекло. Пожалуйста, попробуйте снова.');
+                    showRetryButton();
+                }
+                // Otherwise continue polling (pending status)
+
+            } catch (error) {
+                console.error('Polling error:', error);
+                // Continue polling on error
+            }
+        }, 2000); // Poll every 2 seconds
+    }
+
+    // Helper function to show error in check call mode
+    function showError(message) {
+        const errorMessage = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+        const waitingStatus = document.getElementById('waitingStatus');
+
+        errorText.textContent = message;
+        errorMessage.classList.remove('hidden');
+        waitingStatus.classList.add('hidden');
+    }
+
+    // Helper function to show retry button
+    function showRetryButton() {
+        const retryContainer = document.getElementById('retryContainer');
+        const callButton = document.getElementById('callButton');
+
+        callButton.style.display = 'none';
+        retryContainer.classList.remove('hidden');
+    }
+
+    // ============== SMS/Flash Call Functions ==============
 
     // Start countdown timer
     function startTimer() {

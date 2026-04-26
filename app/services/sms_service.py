@@ -152,11 +152,15 @@ async def verify_sms_code(
         - (False, "Error message") if invalid or expired
 
     Verification logic:
-        1. Check if user is already verified
-        2. Check if SMS code exists
-        3. Check if code has not expired (5 minutes)
-        4. Compare entered code with stored code
-        5. If valid: mark as verified, clear code
+        1. Check if SMS code exists
+        2. Check if code has not expired (5 minutes)
+        3. Compare entered code with stored code
+        4. If valid: mark as verified, clear code
+
+    Note:
+        Previously verified users must also enter a valid code when logging in
+        after logout. The is_verified flag is ignored during code verification
+        to ensure security.
 
     Usage:
         user = await get_user_by_phone(db, "+79991234567")
@@ -164,10 +168,6 @@ async def verify_sms_code(
         if success:
             print("User verified successfully")
     """
-    # Check if already verified
-    if user.is_verified:
-        return True, "Already verified"
-
     # Check if code exists
     if not user.sms_code:
         return False, "Код не был отправлен"
@@ -184,12 +184,16 @@ async def verify_sms_code(
         return False, "Неверный код"
 
     # Code is valid - mark user as verified
+    # IMPORTANT: Save user.id BEFORE commit to avoid lazy-loading issues
+    user_id = user.id
+
     user.is_verified = True
     user.sms_code = None
     user.sms_code_expires_at = None
     await db.commit()
 
-    return True, "Verified"
+    # Return user_id so caller doesn't need to access expired object
+    return True, "Verified", user_id
 
 
 async def set_user_sms_code(
