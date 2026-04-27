@@ -15,6 +15,20 @@
   </tr>
 </table>
 
+<table>
+  <tr>
+    <td><img src="static/IMG_7698.PNG" width="300"></td>
+    <td><img src="static/IMG_7699.PNG" width="300"></td>
+    <td><img src="static/IMG_7700.PNG" width="300"></td>
+  </tr>
+  <tr>
+    <td><img src="static/IMG_7701.PNG" width="300"></td>
+    <td><img src="static/IMG_7702.PNG" width="300"></td>
+    <td></td>
+  </tr>
+</table>
+
+
 ## 📱 О проекте
 
 PWA (Progressive Web App) для автоматизации выдачи скидочных карт в розничных точках. Система позволяет клиентам получать виртуальные карты лояльности через смартфон без установки приложения из AppStore/Google Play.
