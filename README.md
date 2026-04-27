@@ -17,16 +17,14 @@
 
 <table>
   <tr>
-    <td><img src="static/IMG_7698.PNG" width="300"></td>
-    <td><img src="static/IMG_7699.PNG" width="300"></td>
-    <td><img src="static/IMG_7700.PNG" width="300"></td>
-  </tr>
-  <tr>
-    <td><img src="static/IMG_7701.PNG" width="300"></td>
-    <td><img src="static/IMG_7702.PNG" width="300"></td>
-    <td></td>
+    <td><img src="static/IMG_7698.PNG" width="200" alt="Screen 1"></td>
+    <td><img src="static/IMG_7699.PNG" width="200" alt="Screen 2"></td>
+    <td><img src="static/IMG_7700.PNG" width="200" alt="Screen 3"></td>
+    <td><img src="static/IMG_7701.PNG" width="200" alt="Screen 4"></td>
+    <td><img src="static/IMG_7702.PNG" width="200" alt="Screen 5"></td>
   </tr>
 </table>
+
 
 
 ## 📱 О проекте
